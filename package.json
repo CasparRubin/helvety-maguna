@@ -1,6 +1,6 @@
 {
   "name": "maguna",
-  "description": "Tauri desktop app for GGUF models — catalog, download, import, per-mode settings (prompt, languages, model), appearance (light/dark), on-device runs, local run archives, and copy-to-clipboard on I/O fields",
+  "description": "Tauri desktop app for GGUF models — catalog, download, import, Chat (multi-turn) plus correction/translate modes, per-mode prompts/model, archives (sessions or single runs) in localStorage, light/dark theme, copy controls",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -49,6 +49,7 @@
     "@eslint/js": "^9.39.0",
     "@tauri-apps/cli": "^2",
     "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.6.0",
     "@types/react": "^19.1.8",

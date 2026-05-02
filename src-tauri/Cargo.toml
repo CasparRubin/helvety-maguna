@@ -1,13 +1,13 @@
 [package]
 name = "maguna"
 version = "0.1.0"
-description = "Maguna — GGUF catalog, installs, per-mode prompts, and on-device model runs"
+description = "Maguna — GGUF catalog, installs, Chat and other modes with per-mode prompts, on-device llama_cpp inference"
 authors = ["Helvety"]
 edition = "2021"
 
 [features]
-# Normal app builds include the on-device GGUF engine. Use `--no-default-features` for a
-# lighter shell (catalog/download/import only) when LLVM/libclang is not available.
+# Default includes the GGUF engine. `--no-default-features` builds a lighter binary: catalog,
+# download, and import still run; inference (`run_mode` / `run_mode_chat`) is unavailable.
 default = ["llama"]
 llama = ["dep:llama_cpp"]
 

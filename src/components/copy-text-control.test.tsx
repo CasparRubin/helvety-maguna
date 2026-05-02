@@ -23,20 +23,17 @@ describe("CopyTextControl", () => {
 
   it("disables the button when text is empty", () => {
     render(<CopyTextControl text="" />);
-    const button = screen.getByRole("button", { name: /copy to clipboard/i });
-    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: /copy to clipboard/i })).toBeDisabled();
   });
 
   it("enables the button when text is non-empty", () => {
     render(<CopyTextControl text="hello" />);
-    const button = screen.getByRole("button", { name: /copy to clipboard/i });
-    expect(button.hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: /copy to clipboard/i })).toBeEnabled();
   });
 
   it("disables the button when disabled is true even if text is set", () => {
     render(<CopyTextControl text="hello" disabled />);
-    const button = screen.getByRole("button", { name: /copy to clipboard/i });
-    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: /copy to clipboard/i })).toBeDisabled();
   });
 
   it("copies text and shows copied state", async () => {

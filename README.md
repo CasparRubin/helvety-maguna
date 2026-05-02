@@ -1,6 +1,8 @@
 # Maguna
 
-Desktop app for **GGUF models** you keep on disk: browse the catalog, download or import weights, set a default, then use each **mode** (built-in **Correction DE**, **Correction EN**, **Translate DE -> EN**, **Translate EN -> DE**, plus custom modes) with the installed model you pick. The app uses the network only to **download files** (for example from Hugging Face), not to run models in the cloud.
+Desktop app for **GGUF models** you keep on disk: browse the catalog, download or import weights, set a **default**, then pick a mode and an installed GGUF **per mode**. The built-in modes are **Chat** (multi-turn assistant, replies follow the language of your latest message with English fallback), **Correction DE**, **Correction EN**, **Translate DE → EN**, and **Translate EN → DE**, plus any **custom** modes you add. The network is used only to **download weights** (for example from Hugging Face), not to run inference in the cloud.
+
+On first launch the app opens **Chat**; other routes redirect **`/`**, **`/modes`**, and **`/spelling`** to **`/mode/chat`**; **`/translate`** still goes to the DE → EN mode.
 
 ## Stack
 
@@ -24,14 +26,15 @@ bun install
 bun run dev
 ```
 
-That starts the full app: **Model library** (catalog, download, import, default model) and **modes** (per-mode model choice, prompts, and **Run** against installed weights).
+That starts the full app: **Model library** (catalog, download, import, default model) and **Modes** (per-mode model, prompts, local inference).
 
 ### Using the app
 
-- **Model library:** install models from the catalog or import a GGUF; set the **default** for modes that do not override it.
-- **Each mode:** optional per-mode model; **Mode configuration** is the same for every mode (name, user message shape, system prompt, **Language in** / **Language out**, model). Built-in **Correction DE** / **Correction EN** use the same prompt layout as translation with **German→German** and **English→English** defaults respectively; **Run** uses your installed weights only (no cloud inference in the app itself).
-- **Input & output:** the run textareas start compact (~two lines) and grow with content. Use the **copy** control in the corner of each field to copy the full input or output. **Enter** submits a run (**Shift+Enter** adds a newline). Successful runs are stored in an **Archive** section on that mode’s page (per-mode storage in `localStorage`, newest first; you can remove rows or clear the list).
-- **Appearance:** the sidebar has **Light** and **Dark**; if no saved preference exists, Maguna initializes from your system theme. Your explicit choice is persisted (same `localStorage` key as the splash script in `index.html`; see `THEME_STORAGE_KEY` in [`src/context/theme-context.tsx`](src/context/theme-context.tsx)).
+- **Model library:** install models from the catalog or import a GGUF; set the **default** used by modes that do not override it.
+- **Modes (configuration):** every mode lets you edit **Name**, **System prompt**, **Model**, Save / Reset / Duplicate (built-ins cannot be deleted). **Correction** and **Translate** modes also show **Language in** and **Language out** (German and English today). **Chat** does **not**: reply language follows each user message automatically (fallback English when unclear). Inference always uses weights on device only—not a hosted API inside the app.
+- **Correction / Translate pages:** compact **Input** and **Output** areas with **copy** controls; **Enter** runs (**Shift+Enter** adds a newline). Each successful finished run appears in **Archive** on that mode’s page.
+- **Chat page:** a **conversation** transcript, **composer** (**Enter** sends, **Shift+Enter** newline), **Send / Cancel**, and **New chat**. Completed replies update the current thread and are saved under **Archive** as **sessions** (full message history); open a row to continue, delete one chat, or **Clear archive**. Chat storage is separate per mode id (`localStorage` keys `maguna.chatSessions.v1:<modeId>` for Chat; correction/translate archives use `maguna.modeRunArchive.v1:<modeId>`).
+- **Appearance:** sidebar **Light** / **Dark**; unsaved installs follow the OS. Choice is persisted (same key as [`index.html`](index.html)—see [`THEME_STORAGE_KEY`](src/context/theme-context.tsx) in [`src/context/theme-context.tsx`](src/context/theme-context.tsx)).
 
 ### Where models are stored
 
@@ -48,18 +51,18 @@ In **Model library → Installed models**, use **Open models folder** for the **
 
 ### Scripts
 
-| Command                 | Purpose                                                                                                                                       |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run dev`           | Full desktop app (default Rust features include the on-device engine)                                                                         |
-| `bun run dev:windows`   | Windows: runs `scripts/dev-windows.ps1` (finds LLVM, sets `LIBCLANG_PATH` / `NM_PATH`, then `tauri dev`)                                      |
-| `bun run dev:shell`     | Same UI, Rust built with `--no-default-features` (catalog/download/import work; **Run** in a mode fails until you use a full engine build)    |
-| `bun run dev:vite`      | Vite dev server only (no Tauri; `invoke` / `listen` are not available)                                                                        |
-| `bun run build`         | Production frontend only (`tsc` + Vite → `dist/`; Tauri `beforeBuildCommand` uses this)                                                       |
-| `bun run test`          | Vitest (unit + component tests; component tests opt into `jsdom` per file)                                                                    |
-| `bun run lint`          | ESLint on the TypeScript/React tree                                                                                                           |
-| `bun run tauri build`   | Full desktop installer/bundle (frontend build + Rust with default features)                                                                   |
-| `bun run build:windows` | Windows: runs `scripts/build-windows.ps1` then `tauri build` (same LLVM setup as `dev:windows`)                                               |
-| `bun run check`         | Format, lint, Vitest, frontend `build`, then Rust clippy + tests with **`--no-default-features`** (matches CI; fast compile without libclang) |
+| Command                 | Purpose                                                                                                                                                           |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`           | Full desktop app (default Rust features include the on-device engine)                                                                                             |
+| `bun run dev:windows`   | Windows: runs `scripts/dev-windows.ps1` (finds LLVM, sets `LIBCLANG_PATH` / `NM_PATH`, then `tauri dev`)                                                          |
+| `bun run dev:shell`     | Same UI, Rust **`--no-default-features`**: catalog, download, and import still work; **Run / Send inference fails** until a full (`llama`) build runs that binary |
+| `bun run dev:vite`      | Vite dev server only (no Tauri; `invoke` / `listen` are not available)                                                                                            |
+| `bun run build`         | Production frontend only (`tsc` + Vite → `dist/`; Tauri `beforeBuildCommand` uses this)                                                                           |
+| `bun run test`          | Vitest (unit + component tests; component tests opt into `jsdom` per file)                                                                                        |
+| `bun run lint`          | ESLint on the TypeScript/React tree                                                                                                                               |
+| `bun run tauri build`   | Full desktop installer/bundle (frontend build + Rust with default features)                                                                                       |
+| `bun run build:windows` | Windows: runs `scripts/build-windows.ps1` then `tauri build` (same LLVM setup as `dev:windows`)                                                                   |
+| `bun run check`         | Format, lint, Vitest, frontend `build`, then Rust clippy + tests with **`--no-default-features`** (matches CI; fast compile without libclang)                     |
 
 ### Contributors: engine-free Rust checks
 

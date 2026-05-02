@@ -5,6 +5,8 @@ use std::collections::HashSet;
 
 use crate::catalog::{self, CatalogModel};
 use crate::chat_template::manifest_template_key_from_hints;
+#[cfg(feature = "llama")]
+use crate::chat_template::{ChatPieceRole, ChatTemplate};
 use crate::download;
 #[cfg(not(feature = "llama"))]
 use crate::error::MagunaError;
@@ -19,6 +21,77 @@ use crate::storage::{self, InstalledModelDto};
 pub struct ModeModelBinding {
     pub effective_model_id: Option<String>,
     pub override_model_id: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ChatInvokeRole {
+    User,
+    Assistant,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+pub struct ChatInvokeMessage {
+    pub role: ChatInvokeRole,
+    pub content: String,
+}
+
+fn validate_chat_message_shape(messages: &[ChatInvokeMessage]) -> Result<(), String> {
+    if messages.is_empty() {
+        return Err("Chat requires at least one user message.".into());
+    }
+    if !matches!(messages.last().map(|m| &m.role), Some(ChatInvokeRole::User)) {
+        return Err("Chat messages must end with a user message.".into());
+    }
+    for (i, m) in messages.iter().enumerate() {
+        let want_user = i % 2 == 0;
+        match (&m.role, want_user) {
+            (ChatInvokeRole::User, true) | (ChatInvokeRole::Assistant, false) => {}
+            _ => {
+                return Err(format!(
+                    "Chat messages must strictly alternate user then assistant, starting with user (index {i}).",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "llama")]
+fn chat_messages_to_piece_refs(messages: &[ChatInvokeMessage]) -> Vec<(ChatPieceRole, &str)> {
+    messages
+        .iter()
+        .map(|m| {
+            let r = match m.role {
+                ChatInvokeRole::User => ChatPieceRole::User,
+                ChatInvokeRole::Assistant => ChatPieceRole::Assistant,
+            };
+            (r, m.content.as_str())
+        })
+        .collect()
+}
+
+/// Drop oldest user+assistant pairs until the formatted prompt fits a conservative char budget.
+#[cfg(feature = "llama")]
+fn truncate_chat_invoke_messages(
+    template: ChatTemplate,
+    system: &str,
+    messages: &mut Vec<ChatInvokeMessage>,
+) {
+    const CHAR_BUDGET: usize = 12_000;
+    loop {
+        let pieces = chat_messages_to_piece_refs(messages);
+        let prompt = template.format_prompt_chat(system, &pieces);
+        if prompt.len() <= CHAR_BUDGET || messages.len() <= 1 {
+            break;
+        }
+        if messages.len() >= 3 {
+            messages.remove(0);
+            messages.remove(0);
+        } else {
+            break;
+        }
+    }
 }
 
 /// When at least one model is installed but there is no valid default, set `active_model_id`
@@ -357,9 +430,9 @@ pub fn reset_mode_to_default(app: AppHandle, mode_id: String) -> Result<(), Stri
     modes::reset_builtin(&app, &mode_id).map_err(|e| e.to_string())
 }
 
-/// Caps how many new tokens the local engine may generate, from the formatted user turn.
-/// Correction and translation outputs are usually similar in length to the input; this
-/// scales with pasted text instead of a fixed UI preset (still clamped to backend limits).
+/// Caps how many new tokens the local engine may generate from estimate of input length.
+/// Single-turn modes pass the formatted user block; Chat passes the **latest user** message text.
+/// Still clamped to backend limits.
 fn inferred_generation_cap_from_user_turn(user_turn: &str) -> usize {
     const MIN: usize = 256;
     const MAX: usize = 8192;
@@ -385,6 +458,12 @@ pub async fn run_mode(
         .find(|m| m.id == mode_id)
         .ok_or_else(|| format!("Unknown mode: {mode_id}"))?;
 
+    if mode.prompt_layout == PromptLayout::Chat {
+        return Err(
+            "Chat runs multi-turn via run_mode_chat (Send on the Chat page). Plain run_mode is only for correction, translate, and custom non-chat layouts.".into(),
+        );
+    }
+
     match mode.prompt_layout {
         PromptLayout::Locale => {
             let f = from_lang
@@ -405,6 +484,7 @@ pub async fn run_mode(
             assert_en_de_translate(f, t)?;
         }
         PromptLayout::Plain => {}
+        PromptLayout::Chat => {}
     }
 
     let effective_model = state.resolve_model_for_mode(&mode_id).ok_or_else(|| {
@@ -434,6 +514,84 @@ pub async fn run_mode(
     run_task_inner(&app, &state, &mode.system_prompt, &user, max_tokens).await
 }
 
+#[cfg(feature = "llama")]
+fn spawn_llama_stream_prompt(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    prompt: String,
+    max_tokens: usize,
+) -> Result<(), String> {
+    state.reset_cancel();
+    let (model, _) = state.loaded_for_inference().map_err(|e| e.to_string())?;
+    let cancel = state.cancel_infer.clone();
+    let app_h = app.clone();
+    // Inference uses its own current-thread Tokio driver for `llama_cpp` stream recv; keep it
+    // off the main async runtime to avoid `block_in_place` + `spawn_blocking` deadlocks.
+    std::thread::spawn(move || {
+        if let Err(e) =
+            inference::stream_chat_completion(&app_h, &model, prompt, max_tokens, &cancel)
+        {
+            let _ = app_h.emit("inference-error", e);
+        }
+    });
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn run_mode_chat(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mode_id: String,
+    messages: Vec<ChatInvokeMessage>,
+) -> Result<(), String> {
+    validate_chat_message_shape(&messages)?;
+    let list = modes::load_modes(&app).map_err(|e| e.to_string())?;
+    let mode = list
+        .into_iter()
+        .find(|m| m.id == mode_id)
+        .ok_or_else(|| format!("Unknown mode: {mode_id}"))?;
+
+    if mode.prompt_layout != PromptLayout::Chat {
+        return Err("run_mode_chat is only supported for Chat mode.".into());
+    }
+
+    let effective_model = state.resolve_model_for_mode(&mode_id).ok_or_else(|| {
+        "No model selected for this mode. Set a default in Model library or pick an installed GGUF on this mode's page.".to_string()
+    })?;
+    let _ = storage::resolve_gguf_path(&app, &effective_model).map_err(|e| e.to_string())?;
+
+    #[cfg(not(feature = "llama"))]
+    {
+        let _ = (app, state, messages, mode);
+        Err(MagunaError::NoInferenceBackend.to_string())
+    }
+
+    #[cfg(feature = "llama")]
+    {
+        let mut messages = messages;
+        state.reset_cancel();
+        if state.loaded_model_id().as_deref() != Some(effective_model.as_str()) {
+            state.unload_model();
+            state
+                .load_model_for_id(&app, &effective_model)
+                .map_err(|e| e.to_string())?;
+        }
+
+        let (_, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
+        truncate_chat_invoke_messages(template, &mode.system_prompt, &mut messages);
+        let pieces = chat_messages_to_piece_refs(&messages);
+        let prompt = template.format_prompt_chat(&mode.system_prompt, &pieces);
+        let latest_user_turn = messages
+            .iter()
+            .rev()
+            .find(|m| matches!(m.role, ChatInvokeRole::User))
+            .map(|m| m.content.as_str())
+            .unwrap_or("");
+        let max_tokens = inferred_generation_cap_from_user_turn(latest_user_turn);
+        spawn_llama_stream_prompt(&app, &state, prompt, max_tokens)
+    }
+}
+
 async fn run_task_inner(
     app: &AppHandle,
     state: &State<'_, AppState>,
@@ -450,20 +608,9 @@ async fn run_task_inner(
     #[cfg(feature = "llama")]
     {
         state.reset_cancel();
-        let (model, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
+        let (_, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
         let prompt = template.format_prompt(system, user);
-        let cancel = state.cancel_infer.clone();
-        let app_h = app.clone();
-        // Inference uses its own current-thread Tokio driver for `llama_cpp` stream recv; keep it
-        // off the main async runtime to avoid `block_in_place` + `spawn_blocking` deadlocks.
-        std::thread::spawn(move || {
-            if let Err(e) =
-                inference::stream_chat_completion(&app_h, &model, prompt, max_tokens, &cancel)
-            {
-                let _ = app_h.emit("inference-error", e);
-            }
-        });
-        Ok(())
+        spawn_llama_stream_prompt(app, state, prompt, max_tokens)
     }
 }
 
@@ -525,6 +672,78 @@ mod validate_tests {
             m.prompt_layout = modes::PromptLayout::Locale;
         }
         assert!(validate_modes(&v).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_builtin_chat_with_plain_layout() {
+        let mut v = modes::default_modes();
+        if let Some(m) = v.iter_mut().find(|m| m.id == "chat") {
+            m.prompt_layout = modes::PromptLayout::Plain;
+        }
+        assert!(validate_modes(&v).is_err());
+    }
+
+    #[test]
+    fn chat_message_shape_accepts_single_user() {
+        let msgs = vec![super::ChatInvokeMessage {
+            role: super::ChatInvokeRole::User,
+            content: "hello".into(),
+        }];
+        assert!(super::validate_chat_message_shape(&msgs).is_ok());
+    }
+
+    #[test]
+    fn chat_message_shape_accepts_user_assistant_user() {
+        let msgs = vec![
+            super::ChatInvokeMessage {
+                role: super::ChatInvokeRole::User,
+                content: "a".into(),
+            },
+            super::ChatInvokeMessage {
+                role: super::ChatInvokeRole::Assistant,
+                content: "b".into(),
+            },
+            super::ChatInvokeMessage {
+                role: super::ChatInvokeRole::User,
+                content: "c".into(),
+            },
+        ];
+        assert!(super::validate_chat_message_shape(&msgs).is_ok());
+    }
+
+    #[test]
+    fn chat_message_shape_rejects_empty() {
+        assert!(super::validate_chat_message_shape(&[]).is_err());
+    }
+
+    #[test]
+    fn chat_message_shape_rejects_when_last_not_user() {
+        let msgs = vec![
+            super::ChatInvokeMessage {
+                role: super::ChatInvokeRole::User,
+                content: "a".into(),
+            },
+            super::ChatInvokeMessage {
+                role: super::ChatInvokeRole::Assistant,
+                content: "b".into(),
+            },
+        ];
+        assert!(super::validate_chat_message_shape(&msgs).is_err());
+    }
+
+    #[test]
+    fn chat_message_shape_rejects_double_user() {
+        let msgs = vec![
+            super::ChatInvokeMessage {
+                role: super::ChatInvokeRole::User,
+                content: "a".into(),
+            },
+            super::ChatInvokeMessage {
+                role: super::ChatInvokeRole::User,
+                content: "b".into(),
+            },
+        ];
+        assert!(super::validate_chat_message_shape(&msgs).is_err());
     }
 
     #[test]

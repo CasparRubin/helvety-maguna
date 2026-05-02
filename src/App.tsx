@@ -1,5 +1,11 @@
 import { Navigate, NavLink, Route, Routes } from "react-router-dom";
-import { BookOpen, Languages, Sparkles, SpellCheck2 } from "lucide-react";
+import {
+  BookOpen,
+  Languages,
+  MessageSquare,
+  Sparkles,
+  SpellCheck2,
+} from "lucide-react";
 
 import { ModesNavProvider, useModesNav } from "@/context/modes-nav-context";
 import { cn } from "@/lib/utils";
@@ -18,6 +24,9 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
   );
 
 function modeNavIcon(modeId: string) {
+  if (modeId === "chat") {
+    return <MessageSquare className="size-4 shrink-0" aria-hidden />;
+  }
   if (modeId.startsWith("correction-")) {
     return <SpellCheck2 className="size-4 shrink-0" aria-hidden />;
   }
@@ -76,17 +85,11 @@ function AppShell() {
         <ScrollArea className="h-full w-full">
           <div className="p-6">
             <Routes>
-              <Route path="/" element={<Navigate to="/mode/correction-de" replace />} />
+              <Route path="/" element={<Navigate to="/mode/chat" replace />} />
               <Route path="/models" element={<ModelsPage />} />
               <Route path="/mode/:modeId" element={<ModePage />} />
-              <Route
-                path="/modes"
-                element={<Navigate to="/mode/correction-de" replace />}
-              />
-              <Route
-                path="/spelling"
-                element={<Navigate to="/mode/correction-de" replace />}
-              />
+              <Route path="/modes" element={<Navigate to="/mode/chat" replace />} />
+              <Route path="/spelling" element={<Navigate to="/mode/chat" replace />} />
               <Route
                 path="/translate"
                 element={<Navigate to="/mode/translate-de-en" replace />}

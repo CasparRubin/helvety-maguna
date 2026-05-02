@@ -23,4 +23,12 @@ describe("compactModelDisplayName", () => {
   it("trims trailing parenthesized quant suffix when no parameter pattern match exists", () => {
     expect(compactModelDisplayName("Model Alpha (Q5_K_M)")).toBe("Model Alpha");
   });
+
+  it("trims outer whitespace", () => {
+    expect(compactModelDisplayName("  Custom  ")).toBe("Custom");
+  });
+
+  it("returns empty string for whitespace-only input", () => {
+    expect(compactModelDisplayName("   ")).toBe("");
+  });
 });

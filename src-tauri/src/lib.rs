@@ -72,6 +72,7 @@ pub fn run() {
             commands::delete_mode,
             commands::reset_mode_to_default,
             commands::run_mode,
+            commands::run_mode_chat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,8 @@
-//! Default **system** copy for built-in correction/translation modes.
-//! All other modes use whatever the user stores in `modes.json`. The user turn is built
-//! by Maguna from [`crate::modes::PromptLayout`]—task rules live in the system strings.
+//! Default **system** copy for built-in modes (correction, translation, and **Chat**).
+//! Custom modes use whatever the user stores in `modes.json`.
+//! For **`run_mode`**, the user payload is built from [`crate::modes::PromptLayout`]
+//! (plain / locale / translate). **Chat** uses [`crate::commands::run_mode_chat`] with alternating
+//! user/assistant content; task + tone rules live in these system strings.
 
 /// Built-in **Correction DE** mode (de → de): factory default system prompt.
 pub const CORRECTION_DE_SYSTEM: &str = r#"Du bist ein deutscher Korrektur und Umformulierungs Assistent.
@@ -113,3 +115,14 @@ Wichtige Regeln:
 - Keine Erklaerungen.
 - Keine Listen.
 - Kein Zusatztext."#;
+
+/// Built-in **Chat** mode: factory default system prompt (English instructions; model matches user language).
+pub const CHAT_SYSTEM: &str = r#"You are a helpful, conversational assistant.
+
+Answer in the same language as the user's latest message whenever you can clearly infer that language (for example: if they write in German, reply in German).
+
+If the user's message is ambiguous, very short, mixed-language with no clear primary language, or mostly code or symbols with little natural language, reply in English.
+
+If the user switches language during the conversation, follow the language of their current message.
+
+Be clear and natural. Unless the user asks for a specific format, use short paragraphs when it helps readability."#;

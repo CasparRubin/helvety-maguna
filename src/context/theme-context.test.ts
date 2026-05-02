@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveEffectiveTheme } from "./theme-context";
+import { resolveEffectiveTheme, type ThemePreference } from "./theme-context";
 
 describe("resolveEffectiveTheme", () => {
-  it("returns the selected explicit theme", () => {
-    expect(resolveEffectiveTheme("light")).toBe("light");
-    expect(resolveEffectiveTheme("dark")).toBe("dark");
+  it.each<[ThemePreference, "light" | "dark"]>([
+    ["light", "light"],
+    ["dark", "dark"],
+  ])("maps preference %s to effective %s", (preference, effective) => {
+    expect(resolveEffectiveTheme(preference)).toBe(effective);
   });
 });

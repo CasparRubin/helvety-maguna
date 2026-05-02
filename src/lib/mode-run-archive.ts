@@ -1,6 +1,6 @@
 const STORAGE_KEY_PREFIX = "maguna.modeRunArchive.v1:";
 
-/** Max entries per mode to limit localStorage size. */
+/** Max archived single-shot runs per non-chat mode (`maguna.modeRunArchive.v1:*`). */
 export const MODE_RUN_ARCHIVE_MAX = 400;
 
 export type ModeRunArchiveEntry = {

@@ -6,7 +6,8 @@ use llama_cpp::{standard_sampler::StandardSampler, LlamaModel, SessionParams};
 use tauri::Emitter;
 
 /// Context length for each inference session. The llama.cpp default (512) is far too small for
-/// real prompts plus output and can break generation; KV memory grows with this value.
+/// real prompts plus output; KV memory grows with this value.
+/// Chat builds a long transcript in Rust; callers trim history when prompts approach this budget.
 const SESSION_N_CTX: u32 = 8192;
 
 pub fn stream_chat_completion(

@@ -1,6 +1,7 @@
 import { useLayoutEffect, type RefObject } from "react";
 
-const DEFAULT_MIN_PX = 56;
+/** ~one text row at `text-sm` with default textarea padding (`py-2`). */
+export const AUTOSIZE_TEXTAREA_MIN_HEIGHT_PX = 40;
 
 /** Sets the textarea height from `scrollHeight`, but not below `minHeightPx`. */
 export function syncTextareaHeight(el: HTMLTextAreaElement, minHeightPx: number): void {
@@ -8,11 +9,11 @@ export function syncTextareaHeight(el: HTMLTextAreaElement, minHeightPx: number)
   el.style.height = `${Math.max(el.scrollHeight, minHeightPx)}px`;
 }
 
-/** Keeps a textarea height in sync with its content; floor height defaults to ~2 lines. */
+/** Keeps a textarea height in sync with its content; floor defaults to one row. */
 export function useAutosizeTextarea(
   ref: RefObject<HTMLTextAreaElement | null>,
   value: string,
-  minHeightPx: number = DEFAULT_MIN_PX,
+  minHeightPx: number = AUTOSIZE_TEXTAREA_MIN_HEIGHT_PX,
 ): void {
   useLayoutEffect(() => {
     const el = ref.current;

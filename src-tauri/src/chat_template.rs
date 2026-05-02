@@ -7,7 +7,8 @@
 //! special tokens (same shape as upstream llama.cpp `LLM_CHAT_TEMPLATE_KIMI_K2`).
 //!
 //! Filename / display-name hints (used for GGUF imports) are always compiled.
-//! The resolved enum and prompt formatting are compiled with the `llama` feature.
+//! The resolved enum is compiled with the `llama` feature. `ChatTemplate::format_prompt` wraps
+//! one system + user turn; multi-turn Chat uses `format_prompt_chat` on the same variants.
 
 /// If a hint (imported file stem, display name, etc.) looks like a known instruct
 /// family, returns the manifest/catalog key (`mistral_instruct`, `qwen2_instruct`, …).
@@ -50,6 +51,13 @@ pub fn manifest_template_key_from_hints<'a>(hints: impl IntoIterator<Item = &'a 
         }
     }
     String::new()
+}
+
+#[cfg(feature = "llama")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChatPieceRole {
+    User,
+    Assistant,
 }
 
 #[cfg(feature = "llama")]
@@ -125,6 +133,169 @@ impl ChatTemplate {
             ),
             Self::KimiMoonshot => format!("{K_SYS}{system}{IM_END}{K_USER}{user}{IM_END}{K_ASST}"),
         }
+    }
+
+    /// Multi-turn: `pieces` must start with `User` and alternate; the last piece is the latest user
+    /// message to answer. Output ends with an open assistant generation prefix.
+    pub fn format_prompt_chat(self, system: &str, pieces: &[(ChatPieceRole, &str)]) -> String {
+        const IM_START: &str = concat!("<|", "im_start", "|>");
+        const IM_END: &str = concat!("<|", "im_end", "|>");
+        const K_SYS: &str = concat!("<|", "im_system", "|>system<|", "im_middle", "|>");
+        const K_USER: &str = concat!("<|", "im_user", "|>user<|", "im_middle", "|>");
+        const K_ASST: &str = concat!("<|", "im_assistant", "|>assistant<|", "im_middle", "|>");
+
+        match self {
+            Self::TinyLlamaV1 => {
+                let mut s = format!("<|system|>\n{system}</s>\n");
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => {
+                            s.push_str(&format!("<|user|>\n{text}</s>\n"));
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&format!("<|assistant|>\n{text}</s>\n"));
+                        }
+                    }
+                }
+                s.push_str("<|assistant|>\n");
+                s
+            }
+            Self::Llama3Instruct => {
+                const SH: &str = concat!("<|", "start_header_id", "|>");
+                const EH: &str = concat!("<|", "end_header_id", "|>");
+                const EOT: &str = concat!("<|", "eot_id", "|>");
+                let mut out = String::from("<|begin_of_text|>");
+                out.push_str(&format!("{SH}system{EH}\n\n{system}{EOT}"));
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => {
+                            out.push_str(&format!("{SH}user{EH}\n\n{text}{EOT}"));
+                        }
+                        ChatPieceRole::Assistant => {
+                            out.push_str(&format!("{SH}assistant{EH}\n\n{text}{EOT}"));
+                        }
+                    }
+                }
+                out.push_str(&format!("{SH}assistant{EH}\n\n"));
+                out
+            }
+            Self::MistralInstruct => {
+                let mut out = String::from("<s>[INST] ");
+                let Some((ChatPieceRole::User, first_user)) = pieces.first() else {
+                    out.push_str(system);
+                    return out;
+                };
+                out.push_str(&format!("{system}\n\n{first_user} [/INST]"));
+                let mut i = 1usize;
+                while i < pieces.len() {
+                    let (ChatPieceRole::Assistant, a_text) = pieces[i] else {
+                        break;
+                    };
+                    out.push_str(a_text);
+                    out.push_str("</s>");
+                    i += 1;
+                    if i >= pieces.len() {
+                        break;
+                    }
+                    let (ChatPieceRole::User, u_text) = pieces[i] else {
+                        break;
+                    };
+                    out.push_str(&format!("[INST] {u_text} [/INST]"));
+                    i += 1;
+                }
+                out
+            }
+            Self::QwenChatMl => {
+                let mut s = format!("{IM_START}system\n{system}{IM_END}\n");
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => {
+                            s.push_str(&format!("{IM_START}user\n{text}{IM_END}\n"));
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&format!("{IM_START}assistant\n{text}{IM_END}\n"));
+                        }
+                    }
+                }
+                s.push_str(&format!("{IM_START}assistant\n"));
+                s
+            }
+            Self::Gemma2It => {
+                let mut s = String::new();
+                for (idx, &(role, text)) in pieces.iter().enumerate() {
+                    match role {
+                        ChatPieceRole::User => {
+                            if idx == 0 {
+                                s.push_str(&format!(
+                                    "<start_of_turn>user\n{system}\n\n{text}<end_of_turn>\n"
+                                ));
+                            } else {
+                                s.push_str(&format!("<start_of_turn>user\n{text}<end_of_turn>\n"));
+                            }
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&format!("<start_of_turn>model\n{text}<end_of_turn>\n"));
+                        }
+                    }
+                }
+                s.push_str("<start_of_turn>model\n");
+                s
+            }
+            Self::KimiMoonshot => {
+                let mut s = format!("{K_SYS}{system}{IM_END}");
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => {
+                            s.push_str(&format!("{K_USER}{text}{IM_END}"));
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&format!("{K_ASST}{text}{IM_END}"));
+                        }
+                    }
+                }
+                s.push_str(K_ASST);
+                s
+            }
+        }
+    }
+}
+
+#[cfg(all(test, feature = "llama"))]
+mod llama_chat_template_tests {
+    use super::{ChatPieceRole, ChatTemplate};
+
+    #[test]
+    fn llama3_chat_orders_headers_and_roles() {
+        let t = ChatTemplate::Llama3Instruct;
+        let pieces = [
+            (ChatPieceRole::User, "hi"),
+            (ChatPieceRole::Assistant, "hello"),
+            (ChatPieceRole::User, "next"),
+        ];
+        let p = t.format_prompt_chat("SYS", &pieces);
+        assert!(p.contains("system"));
+        assert!(p.contains("SYS"));
+        let u1 = p.match_indices("user").count();
+        assert!(u1 >= 2, "{p}");
+        assert!(p.ends_with("assistant") || p.contains("assistant"));
+        assert!(p.find("hi").unwrap() < p.find("hello").unwrap());
+        assert!(p.find("hello").unwrap() < p.find("next").unwrap());
+    }
+
+    #[test]
+    fn qwen_chatml_chat_ends_with_assistant_start() {
+        let t = ChatTemplate::QwenChatMl;
+        let pieces = [(ChatPieceRole::User, "hallo")];
+        let p = t.format_prompt_chat("Be nice", &pieces);
+        assert!(p.contains("system"));
+        assert!(p.contains("Be nice"));
+        assert!(p.contains("user"));
+        assert!(p.contains("hallo"));
+        assert!(
+            p.contains("assistant\n") || p.ends_with("assistant"),
+            "{}",
+            p
+        );
     }
 }
 

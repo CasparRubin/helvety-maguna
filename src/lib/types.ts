@@ -32,17 +32,26 @@ export type InstalledModel = {
   chat_template?: string;
 };
 
-/** How the app builds the user turn before sending it to the local model (`translate` allows same language in and out, e.g. correction). */
-export type PromptLayout = "plain" | "locale" | "translate";
+/** Role for Chat mode invokes (`run_mode_chat`); must match serde on the Rust side (lowercase). */
+export type ChatMessageRole = "user" | "assistant";
 
-/** Mode: system prompt + how the user turn is built (`prompt_layout`); Language in/out on the mode page feed that turn except when layout is `plain`. */
+/** One Chat mode turn passed to `run_mode_chat` and persisted in session archives. */
+export type ChatMessage = {
+  role: ChatMessageRole;
+  content: string;
+};
+
+/** How the app builds the user turn before sending it to the local model (`translate` allows same language in and out, e.g. correction). Chat uses `run_mode_chat` instead of `run_mode`. */
+export type PromptLayout = "plain" | "locale" | "translate" | "chat";
+
+/** Mode: system prompt + how the turn is built. Language in/out apply on the mode page for layouts that need them—not for `plain` or `chat` (Chat uses multi-turn Send + `run_mode_chat`). */
 export type ModeDefinition = {
   id: string;
   name: string;
   /** Empty for custom modes is fine; Maguna authors built-in defaults only. */
   system_prompt: string;
   prompt_layout: PromptLayout;
-  /** Persisted for schema validation (Rust clamps 64–8192); the inference path derives the generation budget from the formatted user-turn string at run time, not from this value. */
+  /** Persisted for schema validation (Rust clamps 64–8192); actual generation budget scales from the formatted user payload (single-turn) or the latest Chat user message, not strictly from this number. */
   max_tokens: number;
   builtin: boolean;
 };

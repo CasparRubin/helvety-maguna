@@ -4,7 +4,8 @@ use crate::error::{MagunaError, MagunaResult};
 use crate::paths;
 use crate::prompts;
 
-/// How the user turn is formatted (no free-form template).
+/// How [`format_user_turn`] shapes one user blob for **`run_mode`** (plain, locale, translate).
+/// **`Chat`** is only sent through **`run_mode_chat`** (`format_user_turn(Chat, …)` is pass-through).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptLayout {
@@ -15,6 +16,8 @@ pub enum PromptLayout {
     Locale,
     /// Input language + input + output language; source and target may match (built-in corrections use this with de–de / en–en).
     Translate,
+    /// Multi-turn chat: use `run_mode_chat` with message history; no fixed I/O language framing in the user turn.
+    Chat,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -80,6 +83,14 @@ fn default_max_tokens() -> u32 {
 
 pub fn default_modes() -> Vec<ModeDefinition> {
     vec![
+        ModeDefinition {
+            id: "chat".into(),
+            name: "Chat".into(),
+            system_prompt: prompts::CHAT_SYSTEM.into(),
+            prompt_layout: PromptLayout::Chat,
+            max_tokens: 2048,
+            builtin: true,
+        },
         ModeDefinition {
             id: "correction-de".into(),
             name: "Correction DE".into(),
@@ -228,6 +239,8 @@ pub fn format_user_turn(
             let t = to.unwrap_or("?");
             format!("Input language: {f}\n\nInput:\n\n{input}\n\nOutput language: {t}")
         }
+        // Unused by `run_mode_chat`; passthrough keeps the helper total if ever called by mistake.
+        PromptLayout::Chat => input.to_string(),
     }
 }
 
@@ -241,10 +254,11 @@ mod tests {
         assert_eq!(
             ids,
             vec![
+                "chat",
                 "correction-de",
                 "correction-en",
                 "translate-de-en",
-                "translate-en-de"
+                "translate-en-de",
             ]
         );
     }
@@ -252,6 +266,9 @@ mod tests {
     #[test]
     fn default_builtin_system_prompts_match_prompt_constants() {
         let modes = default_modes();
+        let chat = modes.iter().find(|m| m.id == "chat").unwrap();
+        assert_eq!(chat.system_prompt, prompts::CHAT_SYSTEM);
+        assert_eq!(chat.prompt_layout, PromptLayout::Chat);
         let de = modes.iter().find(|m| m.id == "correction-de").unwrap();
         let en = modes.iter().find(|m| m.id == "correction-en").unwrap();
         let d2e = modes.iter().find(|m| m.id == "translate-de-en").unwrap();
@@ -282,10 +299,12 @@ mod tests {
         let ids: Vec<String> = modes.iter().map(|m| m.id.clone()).collect();
         assert!(!ids.contains(&"spelling".to_string()));
         assert!(!ids.contains(&"translate".to_string()));
+        assert_eq!(ids.first().map(String::as_str), Some("chat"));
         assert!(ids.contains(&"correction-de".to_string()));
         assert!(ids.contains(&"correction-en".to_string()));
         assert!(ids.contains(&"translate-de-en".to_string()));
         assert!(ids.contains(&"translate-en-de".to_string()));
+        assert!(ids.contains(&"chat".to_string()));
     }
 
     #[test]
@@ -305,6 +324,14 @@ mod tests {
                 "{id} must match shipped default (Translate)"
             );
         }
+    }
+
+    #[test]
+    fn format_chat_passes_input() {
+        assert_eq!(
+            format_user_turn(PromptLayout::Chat, "hello", None, None, None),
+            "hello"
+        );
     }
 
     #[test]
