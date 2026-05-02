@@ -4,6 +4,7 @@ import { BookOpen, Languages, Sparkles, SpellCheck2 } from "lucide-react";
 import { ModesNavProvider, useModesNav } from "@/context/modes-nav-context";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemePreferenceRow } from "@/components/ThemePreferenceRow";
 import { ModelsPage } from "@/pages/ModelsPage";
 import { AddModeNavButton, ModePage } from "@/pages/ModePage";
@@ -17,10 +18,10 @@ const navClass = ({ isActive }: { isActive: boolean }) =>
   );
 
 function modeNavIcon(modeId: string) {
-  if (modeId === "spelling") {
+  if (modeId.startsWith("correction-")) {
     return <SpellCheck2 className="size-4 shrink-0" aria-hidden />;
   }
-  if (modeId === "translate") {
+  if (modeId.startsWith("translate-")) {
     return <Languages className="size-4 shrink-0" aria-hidden />;
   }
   return <Sparkles className="size-4 shrink-0" aria-hidden />;
@@ -35,11 +36,14 @@ function AppShell() {
         className="flex w-60 shrink-0 flex-col border-r bg-card"
         aria-label="Main navigation"
       >
-        <div className="p-4">
-          <h1 className="text-lg font-semibold tracking-tight">Maguna</h1>
-          <p className="text-xs text-muted-foreground">
-            Helvety&apos;s local AI Assistant
-          </p>
+        <div className="p-4 text-center">
+          <img
+            src="/helvety_logo.svg"
+            alt="Helvety logo"
+            className="mb-2 block h-auto w-full"
+          />
+          <h1 className="text-3xl font-bold tracking-tight">Maguna</h1>
+          <p className="text-xs text-muted-foreground">On-Device AI</p>
         </div>
         <Separator />
         <nav
@@ -68,22 +72,28 @@ function AppShell() {
           </div>
         </nav>
       </aside>
-      <main
-        id="main-content"
-        className="min-w-0 flex-1 overflow-auto p-6"
-        tabIndex={-1}
-      >
-        <Routes>
-          <Route path="/" element={<Navigate to="/mode/spelling" replace />} />
-          <Route path="/models" element={<ModelsPage />} />
-          <Route path="/mode/:modeId" element={<ModePage />} />
-          <Route path="/modes" element={<Navigate to="/mode/spelling" replace />} />
-          <Route path="/spelling" element={<Navigate to="/mode/spelling" replace />} />
-          <Route
-            path="/translate"
-            element={<Navigate to="/mode/translate" replace />}
-          />
-        </Routes>
+      <main id="main-content" className="min-w-0 flex-1 overflow-hidden" tabIndex={-1}>
+        <ScrollArea className="h-full w-full">
+          <div className="p-6">
+            <Routes>
+              <Route path="/" element={<Navigate to="/mode/correction-de" replace />} />
+              <Route path="/models" element={<ModelsPage />} />
+              <Route path="/mode/:modeId" element={<ModePage />} />
+              <Route
+                path="/modes"
+                element={<Navigate to="/mode/correction-de" replace />}
+              />
+              <Route
+                path="/spelling"
+                element={<Navigate to="/mode/correction-de" replace />}
+              />
+              <Route
+                path="/translate"
+                element={<Navigate to="/mode/translate-de-en" replace />}
+              />
+            </Routes>
+          </div>
+        </ScrollArea>
       </main>
     </div>
   );

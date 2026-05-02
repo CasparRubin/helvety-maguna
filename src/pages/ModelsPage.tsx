@@ -30,6 +30,7 @@ import {
   RECOMMENDED_CATALOG_MODEL_ID,
   sortCatalogBySizeAscending,
 } from "@/lib/catalog-order";
+import { compactModelDisplayName } from "@/lib/model-display";
 import { cn } from "@/lib/utils";
 import type { CatalogEntry, InstalledModel } from "@/lib/types";
 
@@ -48,6 +49,9 @@ export function ModelsPage() {
   const [error, setError] = useState<string | null>(null);
   const [importPath, setImportPath] = useState("");
   const [importName, setImportName] = useState("Imported model");
+  const [settingDefaultModelId, setSettingDefaultModelId] = useState<string | null>(
+    null,
+  );
 
   const refresh = useCallback(async () => {
     setError(null);
@@ -108,6 +112,23 @@ export function ModelsPage() {
       : downloadProgress && downloadProgress.phase === "downloading"
         ? undefined
         : 0;
+
+  const setDefaultModel = useCallback(
+    async (modelId: string) => {
+      if (settingDefaultModelId !== null) return;
+      setError(null);
+      setSettingDefaultModelId(modelId);
+      try {
+        await invoke("set_active_model", { modelId });
+        await refresh();
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setSettingDefaultModelId(null);
+      }
+    },
+    [refresh, settingDefaultModelId],
+  );
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -221,7 +242,9 @@ export function ModelsPage() {
                     className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3"
                   >
                     <div>
-                      <p className="font-medium">{m.display_name}</p>
+                      <p className="font-medium">
+                        {compactModelDisplayName(m.display_name)}
+                      </p>
                       <p className="text-xs text-muted-foreground">{m.id}</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -229,13 +252,19 @@ export function ModelsPage() {
                         type="button"
                         size="sm"
                         variant={activeId === m.id ? "secondary" : "outline"}
-                        onClick={() => {
-                          void invoke("set_active_model", { modelId: m.id })
-                            .then(() => refresh())
-                            .catch((e) => setError(String(e)));
-                        }}
+                        disabled={settingDefaultModelId !== null}
+                        onClick={() => void setDefaultModel(m.id)}
                       >
-                        {activeId === m.id ? "Default" : "Set as default"}
+                        {settingDefaultModelId === m.id ? (
+                          <>
+                            <Loader2 className="size-4 animate-spin" aria-hidden />
+                            Setting...
+                          </>
+                        ) : activeId === m.id ? (
+                          "Default"
+                        ) : (
+                          "Set as default"
+                        )}
                       </Button>
                       <Button
                         type="button"
@@ -292,7 +321,7 @@ export function ModelsPage() {
                         </Badge>
                       ) : null}
                       <CardTitle className="text-base leading-snug">
-                        {entry.display_name}
+                        {compactModelDisplayName(entry.display_name)}
                       </CardTitle>
                       <p className="text-sm text-muted-foreground">{entry.maker}</p>
                       {releasedLabel ? (

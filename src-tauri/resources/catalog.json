@@ -4,7 +4,7 @@
     {
       "id": "qwen2.5-14b-instruct-q4km",
       "maker": "Alibaba Cloud",
-      "display_name": "Qwen 2.5 14B Instruct (Q4_K_M)",
+      "display_name": "Qwen 2.5 14B",
       "description": "Strong pick for careful English and German writing, translation, and proofreading: strong instruction following and long-form consistency. Expect ~10 GB on disk and higher RAM use than 7B options—use Qwen 7B or Mistral 7B if your machine is tighter.",
       "url": "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
       "sha256": null,
@@ -18,7 +18,7 @@
     {
       "id": "gemma-2-9b-it-q4km",
       "maker": "Google",
-      "display_name": "Gemma 2 9B IT (Q4_K_M)",
+      "display_name": "Gemma 2 9B",
       "description": "Strong mid-size instruct model with clear, safe answers and solid EN/DE quality—good when Qwen 14B is too heavy. A notch below the 14B pick on the hardest mixed-language or very long passages.",
       "url": "https://huggingface.co/bartowski/gemma-2-9b-it-GGUF/resolve/main/gemma-2-9b-it-Q4_K_M.gguf",
       "sha256": null,
@@ -32,7 +32,7 @@
     {
       "id": "qwen2.5-7b-instruct-q4km",
       "maker": "Alibaba Cloud",
-      "display_name": "Qwen 2.5 7B Instruct (Q4_K_M)",
+      "display_name": "Qwen 2.5 7B",
       "description": "Efficient 7B instruct with strong multilingual behavior and disciplined replies—suitable for everyday correction and translation when you want lower latency and ~5 GB downloads than the 14B flagship.",
       "url": "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
       "sha256": null,
@@ -46,7 +46,7 @@
     {
       "id": "mistral-7b-instruct-v03-q4km",
       "maker": "Mistral AI",
-      "display_name": "Mistral 7B Instruct v0.3 (Q4_K_M)",
+      "display_name": "Mistral 7B",
       "description": "Recommended starting model: widely used 7B instruct checkpoint with crisp answers and reliable EN/DE for drafting and translation-style prompts. A practical lighter alternative to Qwen 7B depending on taste; all picks here are 7B+ so Maguna does not steer you toward toy-sized models.",
       "url": "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
       "sha256": null,
@@ -60,7 +60,7 @@
     {
       "id": "deepseek-r1-distill-qwen-7b-q4km",
       "maker": "DeepSeek",
-      "display_name": "DeepSeek R1 Distill Qwen 7B (Q4_K_M)",
+      "display_name": "DeepSeek R1 Distill Qwen 7B",
       "description": "Open-weight reasoning-style model distilled from DeepSeek-R1 into the Qwen-7B architecture: strong math, logic, and step-by-step answers. Replies often include a visible chain-of-thought style trace before the final answer—great for analysis, awkward for polished prose; prefer Mistral or Qwen 2.5 Instruct when you want clean copy.",
       "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-7B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-7B-Q4_K_M.gguf",
       "sha256": null,

@@ -290,16 +290,21 @@ fn assert_en_de_translate(from: &str, to: &str) -> Result<(), String> {
 }
 
 pub(crate) fn validate_modes(modes: &[ModeDefinition]) -> Result<(), String> {
+    let builtin_defaults = modes::default_modes();
+    let required_builtin_ids: HashSet<&str> =
+        builtin_defaults.iter().map(|m| m.id.as_str()).collect();
     let mut seen = HashSet::new();
     for m in modes {
         if !seen.insert(m.id.as_str()) {
             return Err(format!("Duplicate mode id: {}", m.id));
         }
-        if m.id == "spelling" && m.prompt_layout != PromptLayout::Locale {
-            return Err("Built-in Correction mode must use the locale prompt layout.".into());
-        }
-        if m.id == "translate" && m.prompt_layout != PromptLayout::Translate {
-            return Err("Built-in Translate mode must use the translate prompt layout.".into());
+        if let Some(required_layout) = modes::builtin_layout(&m.id) {
+            if m.prompt_layout != required_layout {
+                return Err(format!(
+                    "Built-in mode \"{}\" must keep its prompt layout.",
+                    m.name
+                ));
+            }
         }
         if m.max_tokens < 64 || m.max_tokens > 8192 {
             return Err(format!(
@@ -309,8 +314,8 @@ pub(crate) fn validate_modes(modes: &[ModeDefinition]) -> Result<(), String> {
         }
     }
     let ids: HashSet<_> = modes.iter().map(|m| m.id.as_str()).collect();
-    if !ids.contains("spelling") || !ids.contains("translate") {
-        return Err("Modes must include built-in ids \"spelling\" and \"translate\".".into());
+    if !required_builtin_ids.iter().all(|id| ids.contains(id)) {
+        return Err("Modes must include all required built-in modes.".into());
     }
     Ok(())
 }
@@ -323,12 +328,9 @@ pub fn get_modes(app: AppHandle) -> Result<Vec<ModeDefinition>, String> {
 #[tauri::command]
 pub fn set_modes(app: AppHandle, mut modes: Vec<ModeDefinition>) -> Result<(), String> {
     for m in &mut modes {
-        if m.id == "spelling" {
+        if let Some(layout) = crate::modes::builtin_layout(&m.id) {
             m.builtin = true;
-            m.prompt_layout = PromptLayout::Locale;
-        } else if m.id == "translate" {
-            m.builtin = true;
-            m.prompt_layout = PromptLayout::Translate;
+            m.prompt_layout = layout;
         }
     }
     validate_modes(&modes)?;
@@ -337,7 +339,7 @@ pub fn set_modes(app: AppHandle, mut modes: Vec<ModeDefinition>) -> Result<(), S
 
 #[tauri::command]
 pub fn delete_mode(app: AppHandle, mode_id: String) -> Result<(), String> {
-    if mode_id == "spelling" || mode_id == "translate" {
+    if modes::is_builtin_mode_id(&mode_id) {
         return Err("Built-in modes cannot be deleted.".into());
     }
     let mut list = modes::load_modes(&app).map_err(|e| e.to_string())?;
@@ -503,7 +505,7 @@ mod validate_tests {
     #[test]
     fn validate_rejects_wrong_builtin_layout() {
         let mut v = modes::default_modes();
-        if let Some(m) = v.iter_mut().find(|m| m.id == "spelling") {
+        if let Some(m) = v.iter_mut().find(|m| m.id == "correction-de") {
             m.prompt_layout = modes::PromptLayout::Plain;
         }
         assert!(validate_modes(&v).is_err());
@@ -538,7 +540,7 @@ mod validate_tests {
     }
 
     #[test]
-    fn validate_requires_spelling_and_translate() {
+    fn validate_requires_all_builtins() {
         let v = vec![mode("a", "Only", modes::PromptLayout::Plain, 128)];
         assert!(validate_modes(&v).is_err());
     }

@@ -39,7 +39,7 @@ export type PromptLayout = "plain" | "locale" | "translate";
 export type ModeDefinition = {
   id: string;
   name: string;
-  /** Empty for custom modes is fine; Maguna only authors defaults for built-in correction + translate. */
+  /** Empty for custom modes is fine; Maguna authors built-in defaults only. */
   system_prompt: string;
   prompt_layout: PromptLayout;
   /** Kept for saved modes / validation; generation length is inferred from your input at run time. */

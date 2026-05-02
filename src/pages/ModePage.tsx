@@ -7,6 +7,7 @@ import {
 } from "@/hooks/useInferenceListeners";
 import { useModesNav } from "@/context/modes-nav-context";
 import { stripChatArtifacts } from "@/lib/inference-output";
+import { compactModelDisplayName } from "@/lib/model-display";
 import type {
   InstalledModel,
   ModeDefinition,
@@ -41,6 +42,15 @@ const LANGS = [
   { value: "de", label: "German" },
 ];
 
+const DEFAULT_MODE_ROUTE = "/mode/correction-de";
+
+function formatDurationMs(ms: number): string {
+  if (ms < 1000) {
+    return `${ms} ms`;
+  }
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
 function newCustomMode(): ModeDefinition {
   return {
     id: `mode-${crypto.randomUUID()}`,
@@ -67,6 +77,9 @@ export function ModePage() {
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState(false);
   const [inferPhase, setInferPhase] = useState<InferencePhase | null>(null);
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
+  const [runDurationMs, setRunDurationMs] = useState<number | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
 
@@ -106,20 +119,41 @@ export function ModePage() {
     setDraft(selectedMode ? { ...selectedMode } : null);
     setInputText("");
     setOut("");
+    setRunStartedAt(null);
+    setRunDurationMs(null);
+    setCancelling(false);
     setErr(null);
+    if (selectedMode?.id === "correction-en") {
+      setLocale("en");
+    } else if (selectedMode?.id === "correction-de") {
+      setLocale("de");
+    } else if (selectedMode?.id === "translate-de-en") {
+      setFromLang("de");
+      setToLang("en");
+    } else if (selectedMode?.id === "translate-en-de") {
+      setFromLang("en");
+      setToLang("de");
+    }
   }, [selectedMode]);
 
   useInferenceListeners({
     onChunk: (s) => setOut((o) => o + s),
     onPhase: (phase) => setInferPhase(phase),
     onDone: () => {
+      if (runStartedAt !== null) {
+        setRunDurationMs(Math.max(0, Date.now() - runStartedAt));
+      }
+      setRunStartedAt(null);
       setOut((o) => stripChatArtifacts(o));
       setInferPhase(null);
+      setCancelling(false);
       setBusy(false);
     },
     onError: (msg) => {
       setErr(msg);
       setInferPhase(null);
+      setRunStartedAt(null);
+      setCancelling(false);
       setBusy(false);
     },
   });
@@ -155,6 +189,9 @@ export function ModePage() {
     setErr(null);
     setOut("");
     setInferPhase(null);
+    setRunDurationMs(null);
+    setRunStartedAt(Date.now());
+    setCancelling(false);
     setBusy(true);
     try {
       await invoke("run_mode", {
@@ -167,6 +204,7 @@ export function ModePage() {
     } catch (e) {
       setErr(String(e));
       setInferPhase(null);
+      setRunStartedAt(null);
       setBusy(false);
     }
   }, [draft, inputText, modeId, needsLocale, needsFromTo, locale, fromLang, toLang]);
@@ -215,7 +253,7 @@ export function ModePage() {
           <AlertDescription>
             This mode does not exist or was removed.{" "}
             <Button variant="link" className="h-auto p-0" asChild>
-              <Link to="/mode/spelling">Go to Correction</Link>
+              <Link to={DEFAULT_MODE_ROUTE}>Go to Correction DE</Link>
             </Button>
           </AlertDescription>
         </Alert>
@@ -300,7 +338,7 @@ export function ModePage() {
                       <SelectContent>
                         {installed.map((m) => (
                           <SelectItem key={m.id} value={m.id}>
-                            {m.display_name}
+                            {compactModelDisplayName(m.display_name)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -361,7 +399,7 @@ export function ModePage() {
               </div>
               {draft.builtin ? (
                 <p className="text-sm text-muted-foreground">
-                  {draft.id === "spelling"
+                  {draft.id.startsWith("correction-")
                     ? "Built-in correction: user turn is input language, your text, then matching output language."
                     : "Built-in translate: user turn is source language, your text, then target language."}
                 </p>
@@ -496,7 +534,7 @@ export function ModePage() {
                       try {
                         await invoke("delete_mode", { modeId: draft.id });
                         await refreshModes();
-                        navigate("/mode/spelling", { replace: true });
+                        navigate(DEFAULT_MODE_ROUTE, { replace: true });
                       } catch (e) {
                         setErr(String(e));
                       }
@@ -549,7 +587,7 @@ export function ModePage() {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   void run();
                 }
@@ -558,7 +596,7 @@ export function ModePage() {
               placeholder="Text to process…"
             />
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Button
               type="button"
               onClick={() => void run()}
@@ -581,23 +619,45 @@ export function ModePage() {
               ) : (
                 <>
                   <Sparkles aria-hidden />
-                  Run mode
+                  Run
                 </>
               )}
             </Button>
             <Button
               type="button"
               variant="outline"
-              disabled={!busy}
-              onClick={() => void invoke("cancel_generation").catch(() => {})}
+              disabled={!busy || cancelling}
+              onClick={() => {
+                setCancelling(true);
+                void invoke("cancel_generation").catch(() => {
+                  setCancelling(false);
+                });
+              }}
             >
-              Cancel
+              {cancelling ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden />
+                  Cancelling...
+                </>
+              ) : (
+                "Cancel"
+              )}
             </Button>
           </div>
+          {busy && cancelling ? (
+            <p className="text-xs text-muted-foreground">
+              Cancel requested. Stopping generation and cleaning up...
+            </p>
+          ) : null}
           {busy && inferPhase === "prefill" ? (
             <p className="text-xs text-muted-foreground">
               Absorbing the prompt on CPU is often the slowest part; streamed text
               appears once this finishes.
+            </p>
+          ) : null}
+          {runDurationMs !== null ? (
+            <p className="text-xs text-muted-foreground">
+              Response time: {formatDurationMs(runDurationMs)}
             </p>
           ) : null}
           <div className="flex flex-col gap-2">

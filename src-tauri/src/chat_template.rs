@@ -1,6 +1,6 @@
 //! **Chat framing** for each GGUF family (how `system` + `user` strings are wrapped for the
 //! tokenizer). This is not the same as per-app “system prompts”: those live in `modes.json`
-//! and are user-authored except the two built-in modes in `prompts.rs`.
+//! and are user-authored except the built-in defaults in `prompts.rs`.
 //!
 //! Qwen2.x uses ChatML (`im_start` / `im_end`). Gemma 2 IT uses `<start_of_turn>` turns.
 //! Moonshot Moonlight / Kimi K2 use `im_system` / `im_user` / `im_middle` / `im_assistant`

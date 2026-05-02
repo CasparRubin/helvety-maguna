@@ -5,52 +5,32 @@ import {
   useEffect,
   useMemo,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
 /** Must match the inline script in `index.html` (first paint, no React yet). */
 export const THEME_STORAGE_KEY = "maguna-theme-preference";
 
-export type ThemePreference = "system" | "light" | "dark";
-
-function readStoredPreference(): ThemePreference {
-  try {
-    const raw = localStorage.getItem(THEME_STORAGE_KEY);
-    if (raw === "light" || raw === "dark" || raw === "system") {
-      return raw;
-    }
-  } catch {
-    /* ignore */
-  }
-  return "system";
-}
-
-export function resolveEffectiveTheme(
-  preference: ThemePreference,
-  systemIsDark: boolean,
-): "light" | "dark" {
-  if (preference === "dark") {
-    return "dark";
-  }
-  if (preference === "light") {
-    return "light";
-  }
-  return systemIsDark ? "dark" : "light";
-}
-
-function subscribeSystemDark(cb: () => void) {
-  const mql = window.matchMedia("(prefers-color-scheme: dark)");
-  mql.addEventListener("change", cb);
-  return () => mql.removeEventListener("change", cb);
-}
+export type ThemePreference = "light" | "dark";
 
 function getSystemDarkSnapshot(): boolean {
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-function getServerSystemDarkSnapshot(): boolean {
-  return false;
+function readStoredPreference(): ThemePreference {
+  try {
+    const raw = localStorage.getItem(THEME_STORAGE_KEY);
+    if (raw === "light" || raw === "dark") {
+      return raw;
+    }
+  } catch {
+    /* ignore */
+  }
+  return getSystemDarkSnapshot() ? "dark" : "light";
+}
+
+export function resolveEffectiveTheme(preference: ThemePreference): "light" | "dark" {
+  return preference;
 }
 
 function applyDomClass(effective: "light" | "dark") {
@@ -59,7 +39,7 @@ function applyDomClass(effective: "light" | "dark") {
 
 type ThemeContextValue = {
   preference: ThemePreference;
-  /** Resolved light/dark for the current preference + system state. */
+  /** Resolved light/dark mode currently applied to the app. */
   effective: "light" | "dark";
   setPreference: (next: ThemePreference) => void;
 };
@@ -68,19 +48,10 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>(() =>
-    typeof document === "undefined" ? "system" : readStoredPreference(),
+    typeof document === "undefined" ? "light" : readStoredPreference(),
   );
 
-  const systemIsDark = useSyncExternalStore(
-    subscribeSystemDark,
-    getSystemDarkSnapshot,
-    getServerSystemDarkSnapshot,
-  );
-
-  const effective = useMemo(
-    () => resolveEffectiveTheme(preference, systemIsDark),
-    [preference, systemIsDark],
-  );
+  const effective = useMemo(() => resolveEffectiveTheme(preference), [preference]);
 
   const setPreference = useCallback((next: ThemePreference) => {
     setPreferenceState(next);
@@ -89,7 +60,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-    applyDomClass(resolveEffectiveTheme(next, getSystemDarkSnapshot()));
+    applyDomClass(resolveEffectiveTheme(next));
   }, []);
 
   useEffect(() => {

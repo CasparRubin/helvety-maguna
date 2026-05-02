@@ -1,6 +1,6 @@
 # Maguna
 
-Desktop app for **GGUF models** you keep on disk: browse the catalog, download or import weights, set a default, then use each **mode** (built-in **Correction** and **Translate**, plus custom modes) with the installed model you pick. The app uses the network only to **download files** (for example from Hugging Face), not to run models in the cloud.
+Desktop app for **GGUF models** you keep on disk: browse the catalog, download or import weights, set a default, then use each **mode** (built-in **Correction DE**, **Correction EN**, **Translate DE -> EN**, **Translate EN -> DE**, plus custom modes) with the installed model you pick. The app uses the network only to **download files** (for example from Hugging Face), not to run models in the cloud.
 
 ## Stack
 
@@ -30,7 +30,7 @@ That starts the full app: **Model library** (catalog, download, import, default 
 
 - **Model library:** install models from the catalog or import a GGUF; set the **default** for modes that do not override it.
 - **Each mode:** optional per-mode model; edit prompts; **Run** uses your installed weights only.
-- **Appearance:** the sidebar has **Match system**, **Light**, and **Dark**; the choice is persisted with the app (same `localStorage` API as in the Tauri webview).
+- **Appearance:** the sidebar has **Light** and **Dark**; if no saved preference exists, Maguna initializes from your system theme. Your explicit choice is persisted (same `localStorage` API as in the Tauri webview).
 
 ### Where models are stored
 

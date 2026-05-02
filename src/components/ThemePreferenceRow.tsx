@@ -1,11 +1,10 @@
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type ThemePreference, useTheme } from "@/context/theme-context";
 
 const OPTIONS: { value: ThemePreference; label: string; icon: typeof Sun }[] = [
-  { value: "system", label: "Match system", icon: Monitor },
   { value: "light", label: "Light", icon: Sun },
   { value: "dark", label: "Dark", icon: Moon },
 ];
@@ -14,10 +13,7 @@ export function ThemePreferenceRow() {
   const { preference, setPreference } = useTheme();
 
   return (
-    <div className="space-y-1.5 px-1">
-      <p className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Appearance
-      </p>
+    <div className="px-1">
       <div
         className="flex gap-0.5 rounded-lg border border-border bg-muted/40 p-0.5"
         role="group"

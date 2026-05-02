@@ -174,17 +174,19 @@ mod persist_tests {
 
     #[test]
     fn persisted_settings_roundtrip_with_mode_map() {
-        let json = r#"{"active_model_id":"global-1","mode_model_ids":{"spelling":"spell-1","translate":"tr-1"}}"#;
+        let json = r#"{"active_model_id":"global-1","mode_model_ids":{"correction-de":"spell-1","translate-de-en":"tr-1"}}"#;
         let s: PersistedSettings = serde_json::from_str(json).unwrap();
         let out = serde_json::to_string(&s).unwrap();
         let back: PersistedSettings = serde_json::from_str(&out).unwrap();
         assert_eq!(back.active_model_id, Some("global-1".into()));
         assert_eq!(
-            back.mode_model_ids.get("spelling").map(String::as_str),
+            back.mode_model_ids.get("correction-de").map(String::as_str),
             Some("spell-1")
         );
         assert_eq!(
-            back.mode_model_ids.get("translate").map(String::as_str),
+            back.mode_model_ids
+                .get("translate-de-en")
+                .map(String::as_str),
             Some("tr-1")
         );
     }

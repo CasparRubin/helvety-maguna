@@ -21,7 +21,7 @@ pub enum PromptLayout {
 pub struct ModeDefinition {
     pub id: String,
     pub name: String,
-    /// User-owned except built-in `spelling` / `translate` factory defaults in `prompts.rs`.
+    /// User-owned except built-in factory defaults in `prompts.rs`.
     /// Empty is allowed for custom modes.
     pub system_prompt: String,
     #[serde(default)]
@@ -81,16 +81,32 @@ fn default_max_tokens() -> u32 {
 pub fn default_modes() -> Vec<ModeDefinition> {
     vec![
         ModeDefinition {
-            id: "spelling".into(),
-            name: "Correction".into(),
+            id: "correction-de".into(),
+            name: "Correction DE".into(),
             system_prompt: prompts::SPELLING_SYSTEM.into(),
             prompt_layout: PromptLayout::Locale,
             max_tokens: 384,
             builtin: true,
         },
         ModeDefinition {
-            id: "translate".into(),
-            name: "Translate".into(),
+            id: "correction-en".into(),
+            name: "Correction EN".into(),
+            system_prompt: prompts::SPELLING_SYSTEM.into(),
+            prompt_layout: PromptLayout::Locale,
+            max_tokens: 384,
+            builtin: true,
+        },
+        ModeDefinition {
+            id: "translate-de-en".into(),
+            name: "Translate DE → EN".into(),
+            system_prompt: prompts::TRANSLATE_SYSTEM.into(),
+            prompt_layout: PromptLayout::Translate,
+            max_tokens: 1024,
+            builtin: true,
+        },
+        ModeDefinition {
+            id: "translate-en-de".into(),
+            name: "Translate EN → DE".into(),
             system_prompt: prompts::TRANSLATE_SYSTEM.into(),
             prompt_layout: PromptLayout::Translate,
             max_tokens: 1024,
@@ -132,26 +148,34 @@ pub fn load_modes(app: &tauri::AppHandle) -> MagunaResult<Vec<ModeDefinition>> {
 
 /// If file existed but omitted builtins, prepend them so validation always passes.
 fn ensure_builtin_shape(modes: &mut Vec<ModeDefinition>) {
-    if !modes.iter().any(|m| m.id == "spelling") {
-        modes.insert(0, default_modes()[0].clone());
+    // Remove legacy built-ins from older versions.
+    modes.retain(|m| m.id != "spelling" && m.id != "translate");
+
+    let defaults = default_modes();
+    for (idx, builtin) in defaults.iter().enumerate() {
+        if !modes.iter().any(|m| m.id == builtin.id) {
+            modes.insert(idx, builtin.clone());
+        }
     }
-    if !modes.iter().any(|m| m.id == "translate") {
-        let pos = modes
-            .iter()
-            .position(|m| m.id == "spelling")
-            .map(|i| i + 1)
-            .unwrap_or(0);
-        modes.insert(pos, default_modes()[1].clone());
+
+    // Built-ins must keep their intended layout and builtin flag.
+    for builtin in defaults {
+        if let Some(m) = modes.iter_mut().find(|m| m.id == builtin.id) {
+            m.prompt_layout = builtin.prompt_layout;
+            m.builtin = true;
+        }
     }
-    // Built-ins must keep their intended layout.
-    if let Some(m) = modes.iter_mut().find(|m| m.id == "spelling") {
-        m.prompt_layout = PromptLayout::Locale;
-        m.builtin = true;
-    }
-    if let Some(m) = modes.iter_mut().find(|m| m.id == "translate") {
-        m.prompt_layout = PromptLayout::Translate;
-        m.builtin = true;
-    }
+}
+
+pub fn is_builtin_mode_id(mode_id: &str) -> bool {
+    default_modes().iter().any(|m| m.id == mode_id)
+}
+
+pub fn builtin_layout(mode_id: &str) -> Option<PromptLayout> {
+    default_modes()
+        .into_iter()
+        .find(|m| m.id == mode_id)
+        .map(|m| m.prompt_layout)
 }
 
 pub fn save_modes(app: &tauri::AppHandle, modes: &[ModeDefinition]) -> MagunaResult<()> {
@@ -166,8 +190,8 @@ pub fn save_modes(app: &tauri::AppHandle, modes: &[ModeDefinition]) -> MagunaRes
 }
 
 pub fn reset_builtin(app: &tauri::AppHandle, mode_id: &str) -> MagunaResult<()> {
-    if mode_id != "spelling" && mode_id != "translate" {
-        return Err(MagunaError::msg("only spelling and translate can be reset"));
+    if !is_builtin_mode_id(mode_id) {
+        return Err(MagunaError::msg("only built-in modes can be reset"));
     }
     let fresh = default_modes()
         .into_iter()
@@ -209,6 +233,40 @@ pub fn format_user_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_modes_include_expected_builtins_in_order() {
+        let ids: Vec<String> = default_modes().into_iter().map(|m| m.id).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "correction-de",
+                "correction-en",
+                "translate-de-en",
+                "translate-en-de"
+            ]
+        );
+    }
+
+    #[test]
+    fn ensure_builtin_shape_migrates_legacy_ids_and_inserts_missing_defaults() {
+        let mut modes = vec![ModeDefinition {
+            id: "spelling".into(),
+            name: "Old Correction".into(),
+            system_prompt: "legacy".into(),
+            prompt_layout: PromptLayout::Plain,
+            max_tokens: 111,
+            builtin: false,
+        }];
+        ensure_builtin_shape(&mut modes);
+        let ids: Vec<String> = modes.iter().map(|m| m.id.clone()).collect();
+        assert!(!ids.contains(&"spelling".to_string()));
+        assert!(!ids.contains(&"translate".to_string()));
+        assert!(ids.contains(&"correction-de".to_string()));
+        assert!(ids.contains(&"correction-en".to_string()));
+        assert!(ids.contains(&"translate-de-en".to_string()));
+        assert!(ids.contains(&"translate-en-de".to_string()));
+    }
 
     #[test]
     fn format_plain() {
