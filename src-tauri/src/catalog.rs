@@ -1,10 +1,10 @@
 use serde::Deserialize;
+use tracing::debug;
 
 use crate::error::{MagunaError, MagunaResult};
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CatalogFile {
-    #[allow(dead_code)]
     pub version: u32,
     pub models: Vec<CatalogModel>,
 }
@@ -38,7 +38,10 @@ fn default_chat_template() -> String {
 
 pub fn load_catalog() -> MagunaResult<CatalogFile> {
     const RAW: &str = include_str!("../resources/catalog.json");
-    serde_json::from_str(RAW).map_err(|e| MagunaError::Catalog(e.to_string()))
+    let file: CatalogFile =
+        serde_json::from_str(RAW).map_err(|e| MagunaError::Catalog(e.to_string()))?;
+    debug!(schema_version = file.version, "loaded embedded catalog");
+    Ok(file)
 }
 
 pub fn find_catalog_model(id: &str) -> MagunaResult<CatalogModel> {

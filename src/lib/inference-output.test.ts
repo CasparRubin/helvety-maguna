@@ -37,4 +37,12 @@ describe("stripChatArtifacts", () => {
   it("truncates at earliest marker and trims trailing space", () => {
     expect(stripChatArtifacts("ok <|assistant|>")).toBe("ok");
   });
+
+  it("removes leading whitespace in plain output", () => {
+    expect(stripChatArtifacts(" Hallo Andreas")).toBe("Hallo Andreas");
+  });
+
+  it("removes leading whitespace when marker appears later", () => {
+    expect(stripChatArtifacts(" Hallo <|assistant|>rest")).toBe("Hallo");
+  });
 });

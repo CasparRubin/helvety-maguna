@@ -71,8 +71,7 @@ export function ModePage() {
   const [modelBinding, setModelBinding] = useState<ModeModelBinding | null>(null);
   const [draft, setDraft] = useState<ModeDefinition | null>(null);
   const [inputText, setInputText] = useState("");
-  const [locale, setLocale] = useState("de");
-  const [fromLang, setFromLang] = useState("de");
+  const [fromLang, setFromLang] = useState("en");
   const [toLang, setToLang] = useState("en");
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState(false);
@@ -124,15 +123,20 @@ export function ModePage() {
     setCancelling(false);
     setErr(null);
     if (selectedMode?.id === "correction-en") {
-      setLocale("en");
+      setFromLang("en");
+      setToLang("en");
     } else if (selectedMode?.id === "correction-de") {
-      setLocale("de");
+      setFromLang("de");
+      setToLang("de");
     } else if (selectedMode?.id === "translate-de-en") {
       setFromLang("de");
       setToLang("en");
     } else if (selectedMode?.id === "translate-en-de") {
       setFromLang("en");
       setToLang("de");
+    } else {
+      setFromLang("en");
+      setToLang("en");
     }
   }, [selectedMode]);
 
@@ -169,8 +173,6 @@ export function ModePage() {
   }, [busy]);
 
   const layout: PromptLayout = draft?.prompt_layout ?? "plain";
-  const needsLocale = layout === "locale";
-  const needsFromTo = layout === "translate";
 
   const saveDraftToList = useCallback(async () => {
     if (!draft || !modeId) return;
@@ -197,9 +199,9 @@ export function ModePage() {
       await invoke("run_mode", {
         modeId,
         input: inputText,
-        locale: needsLocale ? locale : null,
-        fromLang: needsFromTo ? fromLang : null,
-        toLang: needsFromTo ? toLang : null,
+        locale: null,
+        fromLang: layout === "plain" ? null : fromLang,
+        toLang: layout === "plain" ? null : toLang,
       });
     } catch (e) {
       setErr(String(e));
@@ -207,7 +209,7 @@ export function ModePage() {
       setRunStartedAt(null);
       setBusy(false);
     }
-  }, [draft, inputText, modeId, needsLocale, needsFromTo, locale, fromLang, toLang]);
+  }, [draft, inputText, modeId, layout, fromLang, toLang]);
 
   const onPickModel = useCallback(
     async (modelId: string) => {
@@ -267,8 +269,8 @@ export function ModePage() {
         <h2 className="text-2xl font-semibold tracking-tight">{draft.name}</h2>
         <p className="text-sm text-muted-foreground">
           Use input and output below. Open{" "}
-          <strong className="font-medium">Mode configuration</strong> for the model,
-          prompt, languages, and other settings.
+          <strong className="font-medium">Mode configuration</strong> for name, user
+          message shape, system prompt, languages in/out, and model.
         </p>
       </header>
 
@@ -289,8 +291,8 @@ export function ModePage() {
             <div className="min-w-0 flex-1 space-y-1">
               <CardTitle className="text-base">Mode configuration</CardTitle>
               <CardDescription>
-                Model, system prompt, message shape, and languages used when you run
-                this mode.
+                Name, mode (user message shape), system prompt, input and output
+                language, then which installed model runs for this page.
               </CardDescription>
             </div>
             <ChevronDown
@@ -304,6 +306,107 @@ export function ModePage() {
         </CardHeader>
         {configOpen ? (
           <CardContent className="flex flex-col gap-6 pt-0">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="mode-name">Name</Label>
+                <Input
+                  id="mode-name"
+                  value={draft.name}
+                  onChange={(e) =>
+                    setDraft((d) => (d ? { ...d, name: e.target.value } : d))
+                  }
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="mode-layout">Mode</Label>
+                <Select
+                  value={draft.prompt_layout}
+                  disabled={draft.builtin}
+                  onValueChange={(v) =>
+                    setDraft((d) =>
+                      d ? { ...d, prompt_layout: v as PromptLayout } : d,
+                    )
+                  }
+                >
+                  <SelectTrigger id="mode-layout">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="plain">
+                      Plain — only your typed text is sent as the user message
+                    </SelectItem>
+                    <SelectItem value="locale">
+                      Locale — structured turn (language in, text, language out); kept
+                      for older custom modes
+                    </SelectItem>
+                    <SelectItem value="translate">
+                      Translate — structured turn (language in, text, language out);
+                      built-in corrections use this with the same language twice (DE–DE,
+                      EN–EN) by default
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {draft.builtin ? (
+                  <p className="text-xs text-muted-foreground">
+                    Built-in modes use a fixed mode; <strong>Reset to default</strong>{" "}
+                    restores the factory choice.
+                  </p>
+                ) : null}
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="mode-system">System prompt</Label>
+                <Textarea
+                  id="mode-system"
+                  value={draft.system_prompt}
+                  onChange={(e) =>
+                    setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d))
+                  }
+                  placeholder="Optional persistent instruction (empty is fine for custom modes)."
+                  className="min-h-[120px] font-mono text-sm"
+                />
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="cfg-from">Language in</Label>
+                  <Select value={fromLang} onValueChange={setFromLang}>
+                    <SelectTrigger id="cfg-from">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LANGS.map((l) => (
+                        <SelectItem key={l.value} value={l.value}>
+                          {l.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="cfg-to">Language out</Label>
+                  <Select value={toLang} onValueChange={setToLang}>
+                    <SelectTrigger id="cfg-to">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LANGS.map((l) => (
+                        <SelectItem key={l.value} value={l.value}>
+                          {l.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {layout === "plain" ? (
+                <p className="text-xs text-muted-foreground">
+                  With <strong>Plain</strong> mode, language choices are not included in
+                  the user turn; they stay here so every mode uses the same fields.
+                </p>
+              ) : null}
+            </div>
+
+            <Separator />
+
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">Model</h3>
               <p className="text-xs text-muted-foreground">
@@ -370,133 +473,6 @@ export function ModePage() {
                 </>
               )}
             </div>
-
-            <Separator />
-
-            <div className="flex flex-col gap-4">
-              <h3 className="text-sm font-medium">Prompt &amp; mode</h3>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="mode-system">System prompt</Label>
-                <Textarea
-                  id="mode-system"
-                  value={draft.system_prompt}
-                  onChange={(e) =>
-                    setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d))
-                  }
-                  placeholder="Optional persistent instruction (empty is fine for custom modes)."
-                  className="min-h-[120px] font-mono text-sm"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="mode-name">Name</Label>
-                <Input
-                  id="mode-name"
-                  value={draft.name}
-                  onChange={(e) =>
-                    setDraft((d) => (d ? { ...d, name: e.target.value } : d))
-                  }
-                />
-              </div>
-              {draft.builtin ? (
-                <p className="text-sm text-muted-foreground">
-                  {draft.id.startsWith("correction-")
-                    ? "Built-in correction: user turn is input language, your text, then matching output language."
-                    : "Built-in translate: user turn is source language, your text, then target language."}
-                </p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="mode-layout">User message shape</Label>
-                  <Select
-                    value={draft.prompt_layout}
-                    onValueChange={(v) =>
-                      setDraft((d) =>
-                        d ? { ...d, prompt_layout: v as PromptLayout } : d,
-                      )
-                    }
-                  >
-                    <SelectTrigger id="mode-layout">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="plain">
-                        Plain — only your typed text is sent as the user message
-                      </SelectItem>
-                      <SelectItem value="locale">
-                        With input language — for correction or tasks that need a
-                        language hint
-                      </SelectItem>
-                      <SelectItem value="translate">
-                        Translate — source language, text, then target language
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-            </div>
-
-            {(needsLocale || needsFromTo) && (
-              <>
-                <Separator />
-                <div className="flex flex-col gap-4">
-                  <h3 className="text-sm font-medium">Languages for runs</h3>
-                  {needsLocale ? (
-                    <div className="flex flex-col gap-2">
-                      <Label htmlFor="cfg-locale">Input language</Label>
-                      <Select value={locale} onValueChange={setLocale}>
-                        <SelectTrigger id="cfg-locale">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {LANGS.map((l) => (
-                            <SelectItem key={l.value} value={l.value}>
-                              {l.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Output language is the same; the model returns corrected text
-                        only.
-                      </p>
-                    </div>
-                  ) : null}
-                  {needsFromTo ? (
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="cfg-from">Input language</Label>
-                        <Select value={fromLang} onValueChange={setFromLang}>
-                          <SelectTrigger id="cfg-from">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {LANGS.map((l) => (
-                              <SelectItem key={l.value} value={l.value}>
-                                {l.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Label htmlFor="cfg-to">Output language</Label>
-                        <Select value={toLang} onValueChange={setToLang}>
-                          <SelectTrigger id="cfg-to">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {LANGS.map((l) => (
-                              <SelectItem key={l.value} value={l.value}>
-                                {l.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </>
-            )}
 
             <Separator />
 

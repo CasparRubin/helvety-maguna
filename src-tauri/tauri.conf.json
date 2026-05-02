@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Maguna",
+  "productName": "Helvety Maguna",
   "version": "0.1.0",
   "identifier": "com.helvety.maguna",
   "build": {
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Maguna",
+        "title": "Helvety Maguna",
         "width": 1800,
         "height": 1000
       }

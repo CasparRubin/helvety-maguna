@@ -14,5 +14,6 @@ export function stripChatArtifacts(text: string): string {
     const i = text.indexOf(m);
     if (i !== -1 && i < end) end = i;
   }
-  return text.slice(0, end).trimEnd();
+  // Some GGUF templates emit an initial leading space before the first token.
+  return text.slice(0, end).trim();
 }

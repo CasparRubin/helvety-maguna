@@ -7,8 +7,9 @@ use crate::error::{MagunaError, MagunaResult};
 
 /// Per-user config, modes, and temp downloads (`modes.json`, `settings.json`, `tmp/`).
 ///
-/// Uses Tauri `app.path().app_data_dir()`. On Windows that is typically
-/// `%APPDATA%\com.helvety.maguna\…` (Roaming), **not** `%LOCALAPPDATA%`.
+/// Uses Tauri `app.path().app_data_dir()`: on Windows typically `%APPDATA%\com.helvety.maguna\…`
+/// (Roaming, **not** `%LOCALAPPDATA%`); on macOS `~/Library/Application Support/com.helvety.maguna/`;
+/// on Linux typically `~/.local/share/com.helvety.maguna/` (respects `XDG_DATA_HOME` when set).
 pub fn maguna_root(app: &tauri::AppHandle) -> MagunaResult<PathBuf> {
     let base = app
         .path()
@@ -50,7 +51,7 @@ pub fn models_dir(app: &tauri::AppHandle) -> MagunaResult<PathBuf> {
     Ok(app_data_models)
 }
 
-/// Next to the binary (`…/Maguna/Models`) or, for a macOS app bundle, `Maguna.app/Models`.
+/// Next to the binary (`…/Helvety Maguna/Models`) or, for a macOS app bundle, `Helvety Maguna.app/Models`.
 fn install_adjacent_models_dir(exe: &Path) -> Option<PathBuf> {
     let exe_dir = exe.parent()?;
     if exe_dir.file_name()?.to_str()? == "MacOS" {
@@ -80,26 +81,41 @@ pub fn tmp_dir(app: &tauri::AppHandle) -> MagunaResult<PathBuf> {
     Ok(maguna_root(app)?.join("tmp"))
 }
 
+/// Basename of an in-flight catalog weight download under [`tmp_dir`] (`<model_id>.partial`).
+/// Must stay aligned with [`crate::download::download_catalog_model`] and install-failure cleanup
+/// in [`crate::commands::download_model`].
+pub fn catalog_download_partial_filename(model_id: &str) -> String {
+    format!("{model_id}.partial")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn install_adjacent_models_dir_macos_bundle() {
-        let exe = Path::new("/Applications/Maguna.app/Contents/MacOS/maguna");
+        let exe = Path::new("/Applications/Helvety Maguna.app/Contents/MacOS/maguna");
         assert_eq!(
             install_adjacent_models_dir(exe),
-            Some(PathBuf::from("/Applications/Maguna.app/Models"))
+            Some(PathBuf::from("/Applications/Helvety Maguna.app/Models"))
         );
     }
 
     #[cfg(windows)]
     #[test]
     fn install_adjacent_models_dir_windows_style() {
-        let exe = Path::new(r"C:\Program Files\Maguna\maguna.exe");
+        let exe = Path::new(r"C:\Program Files\Helvety Maguna\maguna.exe");
         assert_eq!(
             install_adjacent_models_dir(exe),
-            Some(PathBuf::from(r"C:\Program Files\Maguna\Models"))
+            Some(PathBuf::from(r"C:\Program Files\Helvety Maguna\Models"))
+        );
+    }
+
+    #[test]
+    fn catalog_download_partial_filename_shape() {
+        assert_eq!(
+            super::catalog_download_partial_filename("Qwen2.5-7B-Instruct-Q4_K_M"),
+            "Qwen2.5-7B-Instruct-Q4_K_M.partial"
         );
     }
 }

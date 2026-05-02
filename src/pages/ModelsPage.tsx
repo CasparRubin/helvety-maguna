@@ -138,8 +138,9 @@ export function ModelsPage() {
           Pick a model, download or import the GGUF, then set it as default if you want
           every mode to use it unless you choose otherwise on that mode&apos;s page.
           After the downloading step fills in, Maguna shows{" "}
-          <strong>Finishing install</strong> while the file is moved into your model
-          folder (large models can take minutes, especially across drives).
+          <strong>Finishing install</strong> while the weights are renamed or copied
+          into your model folder (large models can take minutes, especially across
+          volumes).
         </p>
       </header>
 
@@ -169,12 +170,13 @@ export function ModelsPage() {
                     {downloadProgress.modelId}
                   </span>
                   {" — "}
-                  Moving the weights into your model library (from Maguna&apos;s
-                  temporary download folder if needed). This step can take a long time
-                  for multi-gigabyte files—especially copying from your profile data
-                  folder (on Windows, under{" "}
-                  <code className="text-xs">AppData\Roaming</code> for this app) to
-                  another drive. Leave the app open until this card disappears.
+                  Renaming or copying the weights into your model library (from
+                  Maguna&apos;s temporary download folder when it differs from{" "}
+                  <code className="text-xs">Models</code>). This step can take a long
+                  time for multi-gigabyte files—especially copying from app data (on
+                  Windows, often under <code className="text-xs">AppData\Roaming</code>{" "}
+                  for this app) across to another drive. Leave the app open until this
+                  card disappears.
                 </>
               ) : (
                 <>

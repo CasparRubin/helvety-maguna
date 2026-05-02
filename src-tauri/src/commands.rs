@@ -11,6 +11,7 @@ use crate::error::MagunaError;
 #[cfg(feature = "llama")]
 use crate::inference;
 use crate::modes::{self, ModeDefinition, PromptLayout};
+use crate::paths;
 use crate::state::AppState;
 use crate::storage::{self, InstalledModelDto};
 
@@ -203,8 +204,11 @@ pub async fn download_model(
     })
     .await
     .map_err(|e| e.to_string())?;
-    // Network stream is done; moving/copying the GGUF into `Models/` can take a long time
-    // (especially cross-drive on Windows). Tell the UI so users do not assume it hung.
+    let staging_partial_path = paths::tmp_dir(&app)
+        .map_err(|e| e.to_string())?
+        .join(paths::catalog_download_partial_filename(&entry.id));
+    // Network stream is done; rename or copy into `Models/` can take a long time (especially
+    // across volumes). Tell the UI so users do not assume it hung.
     let _ = app.emit(
         "download-progress",
         serde_json::json!({
@@ -214,7 +218,10 @@ pub async fn download_model(
             "total": entry.size_bytes,
         }),
     );
-    storage::install_from_catalog(&app, &entry, partial).map_err(|e| e.to_string())?;
+    if let Err(e) = storage::install_from_catalog(&app, &entry, partial) {
+        let _ = std::fs::remove_file(&staging_partial_path);
+        return Err(e.to_string());
+    }
     sync_default_model_from_installs(&app, &state, Some(entry.id.as_str()))?;
     Ok(())
 }
@@ -282,9 +289,6 @@ fn assert_en_de_translate(from: &str, to: &str) -> Result<(), String> {
     }
     if to != "en" && to != "de" {
         return Err("Target language must be \"en\" or \"de\".".into());
-    }
-    if from == to {
-        return Err("Source and target must differ.".into());
     }
     Ok(())
 }
@@ -383,18 +387,21 @@ pub async fn run_mode(
 
     match mode.prompt_layout {
         PromptLayout::Locale => {
-            let loc = locale
+            let f = from_lang
                 .as_deref()
+                .or(locale.as_deref())
                 .ok_or_else(|| "Input language is required for this mode.".to_string())?;
-            assert_en_de_locale(loc)?;
+            assert_en_de_locale(f)?;
+            let t = to_lang.as_deref().unwrap_or(f);
+            assert_en_de_locale(t)?;
         }
         PromptLayout::Translate => {
             let f = from_lang
                 .as_deref()
-                .ok_or_else(|| "Source language is required for this mode.".to_string())?;
+                .ok_or_else(|| "Input language is required for this mode.".to_string())?;
             let t = to_lang
                 .as_deref()
-                .ok_or_else(|| "Target language is required for this mode.".to_string())?;
+                .ok_or_else(|| "Output language is required for this mode.".to_string())?;
             assert_en_de_translate(f, t)?;
         }
         PromptLayout::Plain => {}
@@ -507,6 +514,15 @@ mod validate_tests {
         let mut v = modes::default_modes();
         if let Some(m) = v.iter_mut().find(|m| m.id == "correction-de") {
             m.prompt_layout = modes::PromptLayout::Plain;
+        }
+        assert!(validate_modes(&v).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_builtin_correction_with_locale_layout() {
+        let mut v = modes::default_modes();
+        if let Some(m) = v.iter_mut().find(|m| m.id == "correction-de") {
+            m.prompt_layout = modes::PromptLayout::Locale;
         }
         assert!(validate_modes(&v).is_err());
     }

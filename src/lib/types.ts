@@ -32,10 +32,10 @@ export type InstalledModel = {
   chat_template?: string;
 };
 
-/** How the app builds the user turn before sending it to the local model. */
+/** How the app builds the user turn before sending it to the local model (`translate` allows same language in and out, e.g. correction). */
 export type PromptLayout = "plain" | "locale" | "translate";
 
-/** Mode: system prompt + structured user turn (see `prompt_layout`). */
+/** Mode: system prompt + how the user turn is built (`prompt_layout`); Language in/out on the mode page feed that turn except when layout is `plain`. */
 export type ModeDefinition = {
   id: string;
   name: string;

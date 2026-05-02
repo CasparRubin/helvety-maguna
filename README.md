@@ -12,7 +12,7 @@ Desktop app for **GGUF models** you keep on disk: browse the catalog, download o
 
 ## Requirements
 
-- [Bun](https://bun.sh/) **1.2+** (the repo pins a version in `packageManager`; CI uses that pin)
+- [Bun](https://bun.sh/) **1.2+** per `package.json` `engines`; CI and `packageManager` both pin **1.3.13** for reproducible installs
 - **Node.js 24+** — declared in `package.json` `engines` for tooling compatibility (many editors and plugins expect Node); day-to-day commands use Bun
 - [Rust](https://rustup.rs/) **stable** + **Xcode Command Line Tools** (macOS) or a normal C++ toolchain for Tauri
 - **LLVM with libclang** on the machine that **compiles** the Rust crate (bindgen for `llama_cpp_sys`). macOS usually has this with Xcode CLT; Windows often needs a separate [LLVM](https://github.com/llvm/llvm-project/releases) install—use `bun run dev:windows` after installing LLVM, or set `LIBCLANG_PATH` yourself
@@ -29,7 +29,7 @@ That starts the full app: **Model library** (catalog, download, import, default 
 ### Using the app
 
 - **Model library:** install models from the catalog or import a GGUF; set the **default** for modes that do not override it.
-- **Each mode:** optional per-mode model; edit prompts; **Run** uses your installed weights only.
+- **Each mode:** optional per-mode model; **Mode configuration** is the same for every mode (name, user message shape, system prompt, **Language in** / **Language out**, model). Built-in **Correction DE** / **Correction EN** use the same shape as translation with **de–de** and **en–en** defaults; **Run** uses your installed weights only.
 - **Appearance:** the sidebar has **Light** and **Dark**; if no saved preference exists, Maguna initializes from your system theme. Your explicit choice is persisted (same `localStorage` API as in the Tauri webview).
 
 ### Where models are stored
@@ -39,10 +39,11 @@ Weights live under a single **`Models`** directory (each catalog/import gets its
 - **Windows** — normally **`Models` next to `maguna.exe`** (for example `C:\Program Files\Maguna\Models`). When you **develop** from this repo, the binary is usually `src-tauri\target\debug\maguna.exe`, so installs often land under **`…\target\debug\Models`**.  
   If beside-exe storage is unavailable or installs already live only under app data, Maguna uses **`%APPDATA%\com.helvety.maguna\maguna\models`** (Tauri’s `app_data_dir` is Roaming **`AppData`, not `Local`**).
 - **macOS** — normally **`Maguna.app/Models`** next to `Contents` inside the `.app` bundle (for example `/Applications/Maguna.app/Models`). Otherwise **`~/Library/Application Support/com.helvety.maguna/maguna/models`**.
+- **Linux** — same beside-exe rule as Windows when **`Models` next to the binary** is writable; otherwise weights under **`~/.local/share/com.helvety.maguna/maguna/models`** (or **`$XDG_DATA_HOME/com.helvety.maguna/maguna/models`** when `XDG_DATA_HOME` is set), following the XDG-style layout Tauri uses.
 
-While catalog models **download**, the partial file is written under **`%APPDATA%\com.helvety.maguna\maguna\tmp\`** on Windows (**`~/Library/Application Support/.../maguna/tmp/`** on macOS); after the HTTP stream completes, Maguna moves or copies into **`Models`** (which can take a long time across drives—the UI keeps a separate **Finishing install** step).
+While catalog models **download**, the in-progress file is **`maguna/tmp/<model_id>.partial`** under Tauri’s per-user app data (for example **`%APPDATA%\com.helvety.maguna\maguna\tmp\`** on Windows, **`~/Library/Application Support/com.helvety.maguna/maguna/tmp/`** on macOS, typically **`~/.local/share/com.helvety.maguna/maguna/tmp/`** on Linux). After the stream (and a SHA256 check when the catalog lists one), Maguna **`rename`s** that file into **`Models`** when it is on the same volume, or **`copy`s** then **deletes** the partial when `Models` is on another drive. That step can take a long time across volumes; the UI shows **Finishing install**. Failed downloads, checksum mismatches, and failed installs **remove the partial when the OS allows it** so temp space is reclaimed; a rare error after a cross-volume copy may ask you to delete a leftover path manually.
 
-In **Model library → Installed models**, use **Open models folder** for the **active** weights directory File Explorer / Finder should open (**not** necessarily the tmp folder above).
+In **Model library → Installed models**, use **Open models folder** for the **active** weights directory your file manager should open (**not** necessarily the `tmp` folder above).
 
 ### Scripts
 

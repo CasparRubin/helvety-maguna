@@ -11,9 +11,9 @@ pub enum PromptLayout {
     /// Only the input block is sent.
     #[default]
     Plain,
-    /// Input language (locale) + input + output language (same as locale).
+    /// Input language + input + output language; in `format_user_turn`, output defaults to input when `to` is omitted.
     Locale,
-    /// Input language (source) + input + output language (target).
+    /// Input language + input + output language; source and target may match (built-in corrections use this with de–de / en–en).
     Translate,
 }
 
@@ -83,23 +83,23 @@ pub fn default_modes() -> Vec<ModeDefinition> {
         ModeDefinition {
             id: "correction-de".into(),
             name: "Correction DE".into(),
-            system_prompt: prompts::SPELLING_SYSTEM.into(),
-            prompt_layout: PromptLayout::Locale,
+            system_prompt: prompts::CORRECTION_DE_SYSTEM.into(),
+            prompt_layout: PromptLayout::Translate,
             max_tokens: 384,
             builtin: true,
         },
         ModeDefinition {
             id: "correction-en".into(),
             name: "Correction EN".into(),
-            system_prompt: prompts::SPELLING_SYSTEM.into(),
-            prompt_layout: PromptLayout::Locale,
+            system_prompt: prompts::CORRECTION_EN_SYSTEM.into(),
+            prompt_layout: PromptLayout::Translate,
             max_tokens: 384,
             builtin: true,
         },
         ModeDefinition {
             id: "translate-de-en".into(),
             name: "Translate DE → EN".into(),
-            system_prompt: prompts::TRANSLATE_SYSTEM.into(),
+            system_prompt: prompts::TRANSLATE_DE_EN_SYSTEM.into(),
             prompt_layout: PromptLayout::Translate,
             max_tokens: 1024,
             builtin: true,
@@ -107,7 +107,7 @@ pub fn default_modes() -> Vec<ModeDefinition> {
         ModeDefinition {
             id: "translate-en-de".into(),
             name: "Translate EN → DE".into(),
-            system_prompt: prompts::TRANSLATE_SYSTEM.into(),
+            system_prompt: prompts::TRANSLATE_EN_DE_SYSTEM.into(),
             prompt_layout: PromptLayout::Translate,
             max_tokens: 1024,
             builtin: true,
@@ -219,8 +219,9 @@ pub fn format_user_turn(
             format!("Input:\n\n{input}")
         }
         PromptLayout::Locale => {
-            let loc = locale.unwrap_or("?");
-            format!("Input language: {loc}\n\nInput:\n\n{input}\n\nOutput language: {loc}")
+            let in_lang = from.or(locale).unwrap_or("?");
+            let out_lang = to.unwrap_or(in_lang);
+            format!("Input language: {in_lang}\n\nInput:\n\n{input}\n\nOutput language: {out_lang}")
         }
         PromptLayout::Translate => {
             let f = from.unwrap_or("?");
@@ -249,6 +250,25 @@ mod tests {
     }
 
     #[test]
+    fn default_builtin_system_prompts_match_prompt_constants() {
+        let modes = default_modes();
+        let de = modes.iter().find(|m| m.id == "correction-de").unwrap();
+        let en = modes.iter().find(|m| m.id == "correction-en").unwrap();
+        let d2e = modes.iter().find(|m| m.id == "translate-de-en").unwrap();
+        let e2d = modes.iter().find(|m| m.id == "translate-en-de").unwrap();
+        assert_eq!(de.system_prompt, prompts::CORRECTION_DE_SYSTEM);
+        assert_eq!(en.system_prompt, prompts::CORRECTION_EN_SYSTEM);
+        assert_eq!(d2e.system_prompt, prompts::TRANSLATE_DE_EN_SYSTEM);
+        assert_eq!(e2d.system_prompt, prompts::TRANSLATE_EN_DE_SYSTEM);
+        // Correction uses the same user-turn shape as translation (language in + out);
+        // monolingual runs use matching languages (de–de, en–en) in the UI.
+        assert_eq!(de.prompt_layout, PromptLayout::Translate);
+        assert_eq!(en.prompt_layout, PromptLayout::Translate);
+        assert_eq!(d2e.prompt_layout, PromptLayout::Translate);
+        assert_eq!(e2d.prompt_layout, PromptLayout::Translate);
+    }
+
+    #[test]
     fn ensure_builtin_shape_migrates_legacy_ids_and_inserts_missing_defaults() {
         let mut modes = vec![ModeDefinition {
             id: "spelling".into(),
@@ -269,6 +289,25 @@ mod tests {
     }
 
     #[test]
+    fn ensure_builtin_shape_resets_stale_correction_layout_to_translate() {
+        let mut modes = default_modes();
+        for id in ["correction-de", "correction-en"] {
+            if let Some(m) = modes.iter_mut().find(|m| m.id == id) {
+                m.prompt_layout = PromptLayout::Locale;
+            }
+        }
+        ensure_builtin_shape(&mut modes);
+        for id in ["correction-de", "correction-en"] {
+            let m = modes.iter().find(|m| m.id == id).unwrap();
+            assert_eq!(
+                m.prompt_layout,
+                PromptLayout::Translate,
+                "{id} must match shipped default (Translate)"
+            );
+        }
+    }
+
+    #[test]
     fn format_plain() {
         assert_eq!(
             format_user_turn(PromptLayout::Plain, "hello", None, None, None),
@@ -285,10 +324,31 @@ mod tests {
     }
 
     #[test]
+    fn format_locale_separate_output_language_via_from_to() {
+        let out = format_user_turn(PromptLayout::Locale, "x", None, Some("de"), Some("en"));
+        assert!(out.contains("Input language: de"));
+        assert!(out.contains("Output language: en"));
+    }
+
+    #[test]
     fn format_translate() {
         let out = format_user_turn(PromptLayout::Translate, "hi", None, Some("en"), Some("de"));
         assert!(out.contains("Input language: en"));
         assert!(out.contains("hi"));
+        assert!(out.contains("Output language: de"));
+    }
+
+    #[test]
+    fn format_translate_same_language_for_correction_style() {
+        let out = format_user_turn(
+            PromptLayout::Translate,
+            "fix me",
+            None,
+            Some("de"),
+            Some("de"),
+        );
+        assert!(out.contains("Input language: de"));
+        assert!(out.contains("fix me"));
         assert!(out.contains("Output language: de"));
     }
 }

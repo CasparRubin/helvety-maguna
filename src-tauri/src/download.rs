@@ -4,9 +4,15 @@ use sha2::{Digest, Sha256};
 use tokio::fs::{self, File};
 use tokio::io::AsyncWriteExt;
 
+use std::path::Path;
+
 use crate::catalog::CatalogModel;
 use crate::error::{MagunaError, MagunaResult};
 use crate::paths;
+
+async fn remove_partial_file(path: &Path) {
+    let _ = fs::remove_file(path).await;
+}
 
 pub async fn download_catalog_model(
     app: &tauri::AppHandle,
@@ -15,7 +21,7 @@ pub async fn download_catalog_model(
 ) -> MagunaResult<std::path::PathBuf> {
     let tmp = paths::tmp_dir(app)?;
     fs::create_dir_all(&tmp).await?;
-    let partial = tmp.join(format!("{}.partial", model.id));
+    let partial = tmp.join(paths::catalog_download_partial_filename(&model.id));
 
     if partial.exists() {
         fs::remove_file(&partial).await?;
@@ -46,20 +52,29 @@ pub async fn download_catalog_model(
     let mut hasher = Sha256::new();
     let mut stream = res.bytes_stream();
 
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| MagunaError::Http(e.to_string()))?;
-        hasher.update(&chunk);
-        file.write_all(&chunk).await?;
-        received += chunk.len() as u64;
-        on_progress(received, total);
+    let write_result: MagunaResult<()> = async {
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| MagunaError::Http(e.to_string()))?;
+            hasher.update(&chunk);
+            file.write_all(&chunk).await?;
+            received += chunk.len() as u64;
+            on_progress(received, total);
+        }
+        file.flush().await?;
+        Ok(())
     }
-    file.flush().await?;
+    .await;
+
+    if let Err(e) = write_result {
+        remove_partial_file(&partial).await;
+        return Err(e);
+    }
 
     if let Some(expected) = &model.sha256 {
         let digest = hasher.finalize();
         let hex = hex::encode(digest);
         if hex.to_lowercase() != expected.to_lowercase() {
-            fs::remove_file(&partial).await.ok();
+            remove_partial_file(&partial).await;
             return Err(MagunaError::msg("SHA256 mismatch — download corrupted"));
         }
     }

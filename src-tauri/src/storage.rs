@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,33 @@ pub fn manifest_path(model_dir: &Path) -> PathBuf {
 /// Weight file name beside `manifest.json` for new installs (`<model_id>.gguf`).
 pub fn weights_filename(model_id: &str) -> String {
     format!("{model_id}.gguf")
+}
+
+/// Removes the catalog download staging file after a successful cross-volume `copy` into
+/// `Models/`. Must succeed or we leak a second full copy of multi-GB weights under `tmp/`.
+///
+/// Retries on Windows where AV or transient locks often cause an initial `remove_file` failure.
+pub(crate) fn remove_download_staging_file(path: &Path) -> MagunaResult<()> {
+    let attempts = if cfg!(windows) { 5 } else { 1 };
+    let mut last_err: Option<std::io::Error> = None;
+    for i in 0..attempts {
+        if i > 0 {
+            let shift = (i - 1).min(4);
+            std::thread::sleep(std::time::Duration::from_millis(50 << shift));
+        }
+        match fs::remove_file(path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(()),
+            Err(e) => last_err = Some(e),
+        }
+    }
+    Err(MagunaError::msg(format!(
+        "could not remove temporary weights file after copying to Models (you may have duplicate copies; delete manually at {}): {}",
+        path.display(),
+        last_err
+            .map(|e| e.to_string())
+            .unwrap_or_else(|| "unknown".to_string())
+    )))
 }
 
 /// Resolves the GGUF on disk: prefers the path stored in the manifest, then the older fixed
@@ -119,7 +147,7 @@ pub fn install_from_catalog(
     }
     if fs::rename(&gguf_path, &dest).is_err() {
         fs::copy(&gguf_path, &dest)?;
-        let _ = fs::remove_file(&gguf_path);
+        remove_download_staging_file(&gguf_path)?;
     }
     let manifest = InstalledManifest {
         id: catalog.id.clone(),
@@ -187,12 +215,14 @@ mod tests {
     use super::*;
 
     fn tmp_model_dir() -> PathBuf {
+        // Nanoseconds alone can collide when tests run in parallel; include thread id.
         let p = std::env::temp_dir().join(format!(
-            "maguna-storage-test-{}",
+            "maguna-storage-test-{}-{:?}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            std::thread::current().id(),
         ));
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(&p).unwrap();
@@ -250,6 +280,40 @@ mod tests {
         let dir = tmp_model_dir();
         let m = manifest_stub("x", dir.join("nope.gguf"));
         assert!(effective_gguf_path(&dir, &m).is_err());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn remove_download_staging_file_deletes_existing() {
+        let dir = tmp_model_dir();
+        let p = dir.join(paths::catalog_download_partial_filename("x"));
+        fs::write(&p, b"x").unwrap();
+        remove_download_staging_file(&p).unwrap();
+        assert!(!p.exists());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn remove_download_staging_file_ok_when_already_missing() {
+        let dir = tmp_model_dir();
+        let p = dir.join(paths::catalog_download_partial_filename("gone"));
+        remove_download_staging_file(&p).unwrap();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `remove_download_staging_file` must not report success if the temp file could not be
+    /// removed after a copy (otherwise we silently leak a duplicate multi-GB file).
+    #[test]
+    fn remove_download_staging_file_errors_when_target_is_directory() {
+        let dir = tmp_model_dir();
+        let p = dir.join(paths::catalog_download_partial_filename("isdir"));
+        fs::create_dir_all(&p).unwrap();
+        let err = remove_download_staging_file(&p).expect_err("unlink of directory should fail");
+        assert!(
+            err.to_string().contains("could not remove temporary"),
+            "unexpected error: {err}"
+        );
+        let _ = fs::remove_dir_all(&p);
         let _ = fs::remove_dir_all(&dir);
     }
 }
