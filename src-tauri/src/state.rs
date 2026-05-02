@@ -198,4 +198,15 @@ mod persist_tests {
         let s: PersistedSettings = serde_json::from_str(j).unwrap();
         assert!(s.mode_model_ids.is_empty());
     }
+
+    #[test]
+    fn persisted_settings_empty_json_roundtrip() {
+        let s: PersistedSettings = serde_json::from_str("{}").unwrap();
+        assert!(s.active_model_id.is_none());
+        assert!(s.mode_model_ids.is_empty());
+        let out = serde_json::to_string(&s).unwrap();
+        let back: PersistedSettings = serde_json::from_str(&out).unwrap();
+        assert!(back.active_model_id.is_none());
+        assert!(back.mode_model_ids.is_empty());
+    }
 }

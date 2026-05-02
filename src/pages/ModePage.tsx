@@ -5,7 +5,6 @@ import { useInferenceListeners } from "@/hooks/useInferenceListeners";
 import { useModesNav } from "@/context/modes-nav-context";
 import { stripChatArtifacts } from "@/lib/inference-output";
 import type { InstalledModel, ModeDefinition, ModeModelBinding } from "@/lib/types";
-import { InferenceBackendBanner } from "@/components/InferenceBackendBanner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -216,8 +215,6 @@ export function ModePage() {
           Correction and Translate can be reset to factory defaults anytime.
         </p>
       </header>
-
-      <InferenceBackendBanner />
 
       {err ? (
         <Alert variant="destructive">

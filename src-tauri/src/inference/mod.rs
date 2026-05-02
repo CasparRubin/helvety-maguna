@@ -1,6 +1,5 @@
-//! Local inference. Today this is implemented with llama.cpp behind the `llama` Cargo feature.
-//! A small `InferenceEngine`-style split (`stream_chat_completion`) keeps room for alternate
-//! backends (for example mobile Metal stacks) without rewriting the React shell.
+//! On-device runs use llama.cpp via the `llama` Cargo feature (enabled by default).
+//! `stream_chat_completion` is the narrow hook if alternate engines are added later.
 
 #[cfg(feature = "llama")]
 mod llama_impl;

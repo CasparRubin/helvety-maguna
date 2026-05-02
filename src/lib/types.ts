@@ -30,7 +30,7 @@ export type InstalledModel = {
   chat_template?: string;
 };
 
-/** Local inference mode: optional system string + user template (`{{input}}`; optional `{{locale}}`, `{{from}}`, `{{to}}`). */
+/** Mode: optional system string + user template (`{{input}}`; optional `{{locale}}`, `{{from}}`, `{{to}}`). */
 export type ModeDefinition = {
   id: string;
   name: string;

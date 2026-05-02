@@ -1,6 +1,21 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <!-- Theme key must match THEME_STORAGE_KEY in src/context/theme-context.tsx -->
+    <script>
+      (function () {
+        try {
+          var k = "maguna-theme-preference";
+          var v = localStorage.getItem(k);
+          var root = document.documentElement;
+          var dark = false;
+          if (v === "dark") dark = true;
+          else if (v === "light") dark = false;
+          else dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          root.classList.toggle("dark", dark);
+        } catch (e) {}
+      })();
+    </script>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />

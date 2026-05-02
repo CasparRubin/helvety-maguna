@@ -13,6 +13,7 @@ export async function invoke<T>(
   return rawInvoke(cmd, args as never) as Promise<T>;
 }
 
+/** Subscribe to Tauri events. Outside the Tauri webview, resolves to a no-op unsubscribe (no events). */
 export async function listen<T>(
   event: string,
   handler: (event: { payload: T }) => void,

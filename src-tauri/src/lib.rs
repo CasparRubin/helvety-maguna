@@ -47,7 +47,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::inference_backend_info,
             commands::get_catalog,
             commands::list_installed_models,
             commands::get_active_model_id,

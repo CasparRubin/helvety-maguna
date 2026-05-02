@@ -11,7 +11,7 @@ pub enum MagunaError {
     Http(String),
     #[error("Catalog error: {0}")]
     Catalog(String),
-    #[error("Inference backend was not compiled in. Build with the `llama` feature (e.g. `bun run dev:llama`) and LLVM/libclang; see README.")]
+    #[error("This build cannot run models on your device. Use a normal release of the app, or see the README if you compile from source.")]
     NoInferenceBackend,
     #[error("No model is loaded. Install a GGUF, set a default in Model library, or choose an installed model on the mode page.")]
     NoModelLoaded,

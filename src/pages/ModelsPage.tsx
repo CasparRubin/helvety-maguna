@@ -96,13 +96,10 @@ export function ModelsPage() {
       <header>
         <h2 className="text-2xl font-semibold tracking-tight">Model library</h2>
         <p className="text-sm text-muted-foreground">
-          Curated GGUF weights for local inference. Each entry records the right chat
-          template for the model family (TinyLlama, Llama 3.x, Mistral, Qwen, Gemma,
-          Moonshot-style, DeepSeek R1 distill, etc.). Use{" "}
-          <strong>Set as default</strong> so modes without their own pick use this GGUF.
-          You can still assign a different installed model on each mode&apos;s page.
-          Manual imports default to TinyLlama-style framing unless the saved id matches
-          a known family.
+          Pick a model, download or import the GGUF, then set it as default if you want
+          every mode to use it unless you choose otherwise on that mode&apos;s page.
+          Catalog entries include the right chat template for each model family; imports
+          pick a template from the filename when possible.
         </p>
       </header>
 

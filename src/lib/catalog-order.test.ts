@@ -48,6 +48,19 @@ describe("sortCatalogByRecommendation", () => {
       "future-model-x",
     ]);
   });
+
+  it("orders catalog ids by the shipped recommendation list (not alphabetically)", () => {
+    const sorted = sortCatalogByRecommendation([
+      entry("tinyllama-1.1b-chat-q4km", "Tiny"),
+      entry("moonlight-16b-a3b-instruct-q4ks", "Moon"),
+      entry("qwen2.5-14b-instruct-q4km", "Qwen"),
+    ]);
+    expect(sorted.map((e) => e.id)).toEqual([
+      "qwen2.5-14b-instruct-q4km",
+      "moonlight-16b-a3b-instruct-q4ks",
+      "tinyllama-1.1b-chat-q4km",
+    ]);
+  });
 });
 
 describe("formatApproxDownloadGb", () => {
@@ -57,5 +70,10 @@ describe("formatApproxDownloadGb", () => {
 
   it("uses one decimal from 10 GB upward", () => {
     expect(formatApproxDownloadGb(10_500_000_000)).toBe("~10.5 GB");
+  });
+
+  it("formats zero and small sizes", () => {
+    expect(formatApproxDownloadGb(0)).toBe("~0.00 GB");
+    expect(formatApproxDownloadGb(500_000_000)).toBe("~0.50 GB");
   });
 });

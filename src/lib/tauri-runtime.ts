@@ -1,6 +1,7 @@
 /**
  * Tauri injects `window.__TAURI_INTERNALS__` in the app webview only.
- * Opening http://localhost:1420 in a normal browser (plain `vite`) has no bridge — invoke/listen will throw.
+ * Opening the Vite dev URL in a normal browser has no bridge: `invoke` throws (see `TAURI_REQUIRED_HINT`);
+ * `listen` in `tauri-api.ts` becomes a no-op outside the webview.
  */
 export function isTauri(): boolean {
   if (typeof window === "undefined") return false;
@@ -11,4 +12,4 @@ export function isTauri(): boolean {
 }
 
 export const TAURI_REQUIRED_HINT =
-  "Run the full app with: bun run dev (Tauri + Vite). The Vite-only URL has no Tauri bridge — do not use it for IPC or inference.";
+  "Run the desktop app with: bun run dev (Tauri + Vite). Opening only the Vite dev URL in a browser has no Tauri bridge, so catalog and model actions will not work there.";

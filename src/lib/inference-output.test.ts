@@ -19,6 +19,21 @@ describe("stripChatArtifacts", () => {
     expect(stripChatArtifacts("Answer<|eot_id|>")).toBe("Answer");
   });
 
+  it("truncates before </s> and chat role markers", () => {
+    expect(stripChatArtifacts("Hi</s>")).toBe("Hi");
+    expect(stripChatArtifacts("x<|user|>rest")).toBe("x");
+    expect(stripChatArtifacts("y<|system|>z")).toBe("y");
+  });
+
+  it("truncates before <|start_header_id|>", () => {
+    expect(stripChatArtifacts("out<|start_header_id|>")).toBe("out");
+  });
+
+  it("truncates at earliest marker among several", () => {
+    expect(stripChatArtifacts("ab[/INST]cd<|eot_id|>")).toBe("ab");
+    expect(stripChatArtifacts("only<|assistant|>noise")).toBe("only");
+  });
+
   it("truncates at earliest marker and trims trailing space", () => {
     expect(stripChatArtifacts("ok <|assistant|>")).toBe("ok");
   });

@@ -1,13 +1,14 @@
 [package]
 name = "maguna"
 version = "0.1.0"
-description = "Maguna — local GGUF desktop app with per-mode prompts and model selection"
+description = "Maguna — GGUF catalog, installs, per-mode prompts, and on-device model runs"
 authors = ["Helvety"]
 edition = "2021"
 
 [features]
-default = []
-# Enables on-device GGUF inference via llama.cpp (requires LLVM libclang on the build machine).
+# Normal app builds include the on-device GGUF engine. Use `--no-default-features` for a
+# lighter shell (catalog/download/import only) when LLVM/libclang is not available.
+default = ["llama"]
 llama = ["dep:llama_cpp"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

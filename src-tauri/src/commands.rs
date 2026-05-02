@@ -19,28 +19,6 @@ pub struct ModeModelBinding {
     pub override_model_id: Option<String>,
 }
 
-#[derive(serde::Serialize)]
-pub struct InferenceBackendInfo {
-    /// True when this binary was built with `--features llama` (requires LLVM at compile time).
-    pub llama_backend_compiled: bool,
-    pub dev_hint: String,
-}
-
-#[tauri::command]
-pub fn inference_backend_info() -> InferenceBackendInfo {
-    if cfg!(feature = "llama") {
-        InferenceBackendInfo {
-            llama_backend_compiled: true,
-            dev_hint: "This build includes on-device GGUF inference (llama.cpp) for Modes.".into(),
-        }
-    } else {
-        InferenceBackendInfo {
-            llama_backend_compiled: false,
-            dev_hint: "Modes (local inference) need llama.cpp. On Windows: winget install LLVM.LLVM, then bun run dev:llama:win (or set LIBCLANG_PATH to LLVM\\bin and bun run dev:llama). See README.md (Building with local inference).".into(),
-        }
-    }
-}
-
 #[tauri::command]
 pub fn get_catalog() -> Result<Vec<CatalogModel>, String> {
     catalog::load_catalog()
@@ -455,6 +433,20 @@ mod validate_tests {
     fn validate_rejects_low_max_tokens() {
         let v = builtins_plus(vec![mode("x", "Bad", "{{input}}", 32)]);
         assert!(validate_modes(&v).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_high_max_tokens() {
+        let v = builtins_plus(vec![mode("x", "Bad", "{{input}}", 9000)]);
+        assert!(validate_modes(&v).is_err());
+    }
+
+    #[test]
+    fn validate_accepts_max_tokens_boundaries() {
+        let lo = builtins_plus(vec![mode("x", "Lo", "{{input}}", 64)]);
+        assert!(validate_modes(&lo).is_ok());
+        let hi = builtins_plus(vec![mode("y", "Hi", "{{input}}", 8192)]);
+        assert!(validate_modes(&hi).is_ok());
     }
 
     #[test]

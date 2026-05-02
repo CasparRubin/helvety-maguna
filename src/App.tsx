@@ -4,6 +4,7 @@ import { BookOpen, Languages, Sparkles, SpellCheck2 } from "lucide-react";
 import { ModesNavProvider, useModesNav } from "@/context/modes-nav-context";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import { ThemePreferenceRow } from "@/components/ThemePreferenceRow";
 import { ModelsPage } from "@/pages/ModelsPage";
 import { AddModeNavButton, ModePage } from "@/pages/ModePage";
 
@@ -37,7 +38,7 @@ function AppShell() {
         <div className="p-4">
           <h1 className="text-lg font-semibold tracking-tight">Maguna</h1>
           <p className="text-xs text-muted-foreground">
-            Local GGUF — one page per mode
+            Model library & modes — one page per mode
           </p>
         </div>
         <Separator />
@@ -61,8 +62,9 @@ function AppShell() {
               </NavLink>
             ))}
           </div>
-          <div className="mt-2 shrink-0 border-t pt-2">
+          <div className="mt-2 flex shrink-0 flex-col gap-3 border-t pt-3">
             <AddModeNavButton />
+            <ThemePreferenceRow />
           </div>
         </nav>
       </aside>
