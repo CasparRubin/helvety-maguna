@@ -10,6 +10,7 @@ use crate::chat_template::{ChatPieceRole, ChatTemplate};
 use crate::download;
 #[cfg(not(feature = "llama"))]
 use crate::error::MagunaError;
+use crate::guardrails;
 #[cfg(feature = "llama")]
 use crate::inference;
 use crate::modes::{self, ModeDefinition, PromptLayout};
@@ -34,6 +35,46 @@ pub enum ChatInvokeRole {
 pub struct ChatInvokeMessage {
     pub role: ChatInvokeRole,
     pub content: String,
+}
+
+/// Guardrails are always on; optional override text (`None` or blank uses the built-in default).
+/// `enabled` is accepted for backwards-compatible clients but ignored on write; responses use `true`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GuardrailsSettingsDto {
+    pub enabled: bool,
+    pub custom_text: Option<String>,
+    /// Same text as [`guardrails::GUARDRAILS_SYSTEM_DEFAULT`]; for read-only UI (e.g. Settings).
+    /// Omitted when the client submits updates via [`set_guardrails_settings`].
+    #[serde(default)]
+    pub built_in_policy_text: String,
+}
+
+#[tauri::command]
+pub fn get_guardrails_settings(
+    state: State<'_, AppState>,
+) -> Result<GuardrailsSettingsDto, String> {
+    let s = state.persisted_snapshot();
+    Ok(GuardrailsSettingsDto {
+        enabled: true,
+        custom_text: s.guardrails_custom_text,
+        built_in_policy_text: guardrails::GUARDRAILS_SYSTEM_DEFAULT.to_string(),
+    })
+}
+
+#[tauri::command]
+pub fn set_guardrails_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    value: GuardrailsSettingsDto,
+) -> Result<(), String> {
+    let custom_text = value
+        .custom_text
+        .map(|s| s.trim().to_owned())
+        .filter(|s| !s.is_empty());
+    state
+        .set_guardrails(&app, custom_text)
+        .map_err(|e| e.to_string())
 }
 
 fn validate_chat_message_shape(messages: &[ChatInvokeMessage]) -> Result<(), String> {
@@ -511,7 +552,9 @@ pub async fn run_mode(
         to_lang.as_deref(),
     );
     let max_tokens = inferred_generation_cap_from_user_turn(&user);
-    run_task_inner(&app, &state, &mode.system_prompt, &user, max_tokens).await
+    let effective_system =
+        guardrails::compose_effective_system(&mode.system_prompt, &state.persisted_snapshot());
+    run_task_inner(&app, &state, effective_system.as_str(), &user, max_tokens).await
 }
 
 #[cfg(feature = "llama")]
@@ -578,9 +621,11 @@ pub async fn run_mode_chat(
         }
 
         let (_, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
-        truncate_chat_invoke_messages(template, &mode.system_prompt, &mut messages);
+        let effective_system =
+            guardrails::compose_effective_system(&mode.system_prompt, &state.persisted_snapshot());
+        truncate_chat_invoke_messages(template, effective_system.as_str(), &mut messages);
         let pieces = chat_messages_to_piece_refs(&messages);
-        let prompt = template.format_prompt_chat(&mode.system_prompt, &pieces);
+        let prompt = template.format_prompt_chat(effective_system.as_str(), &pieces);
         let latest_user_turn = messages
             .iter()
             .rev()
@@ -778,5 +823,47 @@ mod validate_tests {
     fn validate_requires_all_builtins() {
         let v = vec![mode("a", "Only", modes::PromptLayout::Plain, 128)];
         assert!(validate_modes(&v).is_err());
+    }
+}
+
+#[cfg(test)]
+mod guardrails_settings_dto_tests {
+    use crate::guardrails;
+
+    use super::GuardrailsSettingsDto;
+
+    #[test]
+    fn deserialize_client_update_allows_omitting_built_in_policy_text() {
+        let json = r#"{"enabled":true,"customText":null}"#;
+        let d: GuardrailsSettingsDto = serde_json::from_str(json).unwrap();
+        assert!(d.enabled);
+        assert!(d.custom_text.is_none());
+        assert!(d.built_in_policy_text.is_empty());
+    }
+
+    #[test]
+    fn deserialize_client_update_accepts_enabled_false_for_back_compat() {
+        let json = r#"{"enabled":false,"customText":null}"#;
+        let d: GuardrailsSettingsDto = serde_json::from_str(json).unwrap();
+        assert!(!d.enabled);
+        assert!(d.custom_text.is_none());
+    }
+
+    #[test]
+    fn serialize_get_response_uses_camel_case_built_in_policy_text() {
+        let dto = GuardrailsSettingsDto {
+            enabled: true,
+            custom_text: None,
+            built_in_policy_text: guardrails::GUARDRAILS_SYSTEM_DEFAULT.to_string(),
+        };
+        let value = serde_json::to_value(&dto).unwrap();
+        let text = value
+            .get("builtInPolicyText")
+            .and_then(|v| v.as_str())
+            .expect("builtInPolicyText JSON key");
+        assert!(
+            text.contains("Maguna content policy"),
+            "UI must receive the canonical built-in wording"
+        );
     }
 }

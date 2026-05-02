@@ -3,6 +3,7 @@ mod chat_template;
 mod commands;
 mod download;
 mod error;
+mod guardrails;
 mod inference;
 mod modes;
 mod paths;
@@ -73,6 +74,8 @@ pub fn run() {
             commands::reset_mode_to_default,
             commands::run_mode,
             commands::run_mode_chat,
+            commands::get_guardrails_settings,
+            commands::set_guardrails_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

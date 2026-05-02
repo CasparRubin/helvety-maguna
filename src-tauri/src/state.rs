@@ -10,13 +10,33 @@ use crate::chat_template::ChatTemplate;
 use crate::error::{MagunaError, MagunaResult};
 use crate::paths;
 
-#[derive(Default, Serialize, Deserialize, Clone)]
+fn default_guardrails_enabled() -> bool {
+    true
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub(crate) struct PersistedSettings {
     #[serde(default)]
-    active_model_id: Option<String>,
+    pub(crate) active_model_id: Option<String>,
     /// Per-mode GGUF id override; modes not listed use `active_model_id` as fallback.
     #[serde(default)]
-    mode_model_ids: HashMap<String, String>,
+    pub(crate) mode_model_ids: HashMap<String, String>,
+    /// Serialized for backwards compatibility; [`load_settings`] and [`AppState::set_guardrails`] force `true` at runtime.
+    #[serde(default = "default_guardrails_enabled")]
+    pub(crate) guardrails_enabled: bool,
+    #[serde(default)]
+    pub(crate) guardrails_custom_text: Option<String>,
+}
+
+impl Default for PersistedSettings {
+    fn default() -> Self {
+        Self {
+            active_model_id: None,
+            mode_model_ids: HashMap::new(),
+            guardrails_enabled: true,
+            guardrails_custom_text: None,
+        }
+    }
 }
 
 fn settings_path(app: &tauri::AppHandle) -> MagunaResult<std::path::PathBuf> {
@@ -30,7 +50,10 @@ pub fn load_settings(app: &tauri::AppHandle) -> PersistedSettings {
     let Ok(raw) = std::fs::read_to_string(path) else {
         return PersistedSettings::default();
     };
-    serde_json::from_str(&raw).unwrap_or_default()
+    let mut s: PersistedSettings = serde_json::from_str(&raw).unwrap_or_default();
+    // Product policy: guardrails cannot be turned off; normalize legacy `false` on disk.
+    s.guardrails_enabled = true;
+    s
 }
 
 pub fn save_settings(app: &tauri::AppHandle, s: &PersistedSettings) -> MagunaResult<()> {
@@ -69,6 +92,22 @@ impl AppState {
 
     pub fn get_active_id(&self) -> Option<String> {
         self.settings.lock().active_model_id.clone()
+    }
+
+    pub(crate) fn persisted_snapshot(&self) -> PersistedSettings {
+        self.settings.lock().clone()
+    }
+
+    pub(crate) fn set_guardrails(
+        &self,
+        app: &tauri::AppHandle,
+        custom_text: Option<String>,
+    ) -> MagunaResult<()> {
+        let mut s = self.settings.lock();
+        s.guardrails_enabled = true;
+        s.guardrails_custom_text = custom_text;
+        drop(s);
+        self.persist(app)
     }
 
     pub fn set_active_id(&self, app: &tauri::AppHandle, id: Option<String>) -> MagunaResult<()> {
@@ -172,9 +211,11 @@ impl AppState {
 mod persist_tests {
     use super::PersistedSettings;
 
+    /// Raw JSON serde roundtrip preserves `guardrails_enabled` as written.
+    /// At runtime, [`load_settings`] forces `guardrails_enabled` to `true` when reading the file.
     #[test]
     fn persisted_settings_roundtrip_with_mode_map() {
-        let json = r#"{"active_model_id":"global-1","mode_model_ids":{"correction-de":"spell-1","translate-de-en":"tr-1"}}"#;
+        let json = r#"{"active_model_id":"global-1","mode_model_ids":{"correction-de":"spell-1","translate-de-en":"tr-1"},"guardrails_enabled":false,"guardrails_custom_text":"x"}"#;
         let s: PersistedSettings = serde_json::from_str(json).unwrap();
         let out = serde_json::to_string(&s).unwrap();
         let back: PersistedSettings = serde_json::from_str(&out).unwrap();
@@ -189,6 +230,8 @@ mod persist_tests {
                 .map(String::as_str),
             Some("tr-1")
         );
+        assert!(!back.guardrails_enabled);
+        assert_eq!(back.guardrails_custom_text.as_deref(), Some("x"));
     }
 
     #[test]
@@ -196,6 +239,8 @@ mod persist_tests {
         let j = r#"{"active_model_id":null}"#;
         let s: PersistedSettings = serde_json::from_str(j).unwrap();
         assert!(s.mode_model_ids.is_empty());
+        assert!(s.guardrails_enabled);
+        assert!(s.guardrails_custom_text.is_none());
     }
 
     #[test]
@@ -203,9 +248,21 @@ mod persist_tests {
         let s: PersistedSettings = serde_json::from_str("{}").unwrap();
         assert!(s.active_model_id.is_none());
         assert!(s.mode_model_ids.is_empty());
+        assert!(s.guardrails_enabled);
+        assert!(s.guardrails_custom_text.is_none());
         let out = serde_json::to_string(&s).unwrap();
         let back: PersistedSettings = serde_json::from_str(&out).unwrap();
         assert!(back.active_model_id.is_none());
         assert!(back.mode_model_ids.is_empty());
+        assert!(back.guardrails_enabled);
+        assert!(back.guardrails_custom_text.is_none());
+    }
+
+    #[test]
+    fn persisted_settings_legacy_json_defaults_guardrails_on() {
+        let j = r#"{"active_model_id":null,"mode_model_ids":{}}"#;
+        let s: PersistedSettings = serde_json::from_str(j).unwrap();
+        assert!(s.guardrails_enabled);
+        assert!(s.guardrails_custom_text.is_none());
     }
 }

@@ -1,5 +1,10 @@
 //! Default **system** copy for built-in modes (correction, translation, and **Chat**).
 //! Custom modes use whatever the user stores in `modes.json`.
+//!
+//! At inference time [`crate::commands::run_mode`] / [`crate::commands::run_mode_chat`] prepend
+//! the guardrail paragraph from [`crate::guardrails`] ahead of each mode `system_prompt`
+//! (always on; custom or built-in default from `settings.json`).
+//!
 //! For **`run_mode`**, the user payload is built from [`crate::modes::PromptLayout`]
 //! (plain / locale / translate). **Chat** uses [`crate::commands::run_mode_chat`] with alternating
 //! user/assistant content; task + tone rules live in these system strings.
@@ -117,7 +122,10 @@ Wichtige Regeln:
 - Kein Zusatztext."#;
 
 /// Built-in **Chat** mode: factory default system prompt (English instructions; model matches user language).
-pub const CHAT_SYSTEM: &str = r#"You are a helpful, conversational assistant.
+/// The desktop UI labels assistant turns "Maguna"; this string is what the model sees as `system`.
+pub const CHAT_SYSTEM: &str = r#"You are Maguna, a helpful, conversational assistant built by Helvety.
+
+When asked your name, what you are called, or to introduce yourself, say you are Maguna and that you were built by Helvety. Do not invent a different product name or company.
 
 Answer in the same language as the user's latest message whenever you can clearly infer that language (for example: if they write in German, reply in German).
 

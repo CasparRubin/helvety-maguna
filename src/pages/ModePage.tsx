@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { invoke } from "@/lib/tauri-api";
 import {
@@ -27,6 +34,7 @@ import {
   trimArchiveToMax,
 } from "@/lib/mode-run-archive";
 import { compactModelDisplayName } from "@/lib/model-display";
+import { createNewCustomMode } from "@/lib/new-custom-mode";
 import type {
   ChatMessage,
   InstalledModel,
@@ -35,13 +43,14 @@ import type {
 } from "@/lib/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -57,12 +66,13 @@ import { Separator } from "@/components/ui/separator";
 import { CopyTextControl } from "@/components/copy-text-control";
 import { cn } from "@/lib/utils";
 import {
-  ChevronDown,
+  ClipboardPaste,
   Loader2,
   MessageSquare,
-  Plus,
   RotateCcw,
+  Settings2,
   Sparkles,
+  SquareSplitHorizontal,
   Trash2,
 } from "lucide-react";
 
@@ -78,17 +88,6 @@ function formatDurationMs(ms: number): string {
     return `${ms} ms`;
   }
   return `${(ms / 1000).toFixed(2)} s`;
-}
-
-function newCustomMode(): ModeDefinition {
-  return {
-    id: `mode-${crypto.randomUUID()}`,
-    name: "New mode",
-    system_prompt: "",
-    prompt_layout: "translate",
-    max_tokens: 768,
-    builtin: false,
-  };
 }
 
 export function ModePage() {
@@ -127,6 +126,10 @@ export function ModePage() {
   const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
   const outputTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatComposerRef = useRef<HTMLTextAreaElement>(null);
+  const modePageLayoutRef = useRef<HTMLDivElement>(null);
+  const chatTranscriptSlotRef = useRef<HTMLDivElement>(null);
+  const chatComposerShellRef = useRef<HTMLDivElement>(null);
+  const [chatTranscriptHeightPx, setChatTranscriptHeightPx] = useState(280);
 
   useAutosizeTextarea(inputTextareaRef, inputText);
   useAutosizeTextarea(outputTextareaRef, out);
@@ -350,6 +353,68 @@ export function ModePage() {
 
   const layout = draft?.prompt_layout ?? "translate";
 
+  // Chat transcript height: keep the Message block inside `#main-content`'s visible area
+  // (matches App shell). Observes layout/composer size; see README "Chat page".
+  useLayoutEffect(() => {
+    if (layout !== "chat") return;
+
+    const measure = () => {
+      const main = document.getElementById("main-content");
+      const slot = chatTranscriptSlotRef.current;
+      const composer = chatComposerShellRef.current;
+      if (!main || !slot || !composer) return;
+
+      const mainRect = main.getBoundingClientRect();
+      const slotTop = slot.getBoundingClientRect().top;
+      const gapTranscriptComposer = 16;
+      const bottomBreathing = 20;
+      const composerH = composer.offsetHeight;
+
+      const raw = Math.floor(
+        mainRect.bottom - bottomBreathing - slotTop - gapTranscriptComposer - composerH,
+      );
+      const maxByMainPane = Math.max(160, Math.floor(mainRect.height * 0.68));
+      const h = Math.max(140, Math.min(raw, maxByMainPane));
+
+      setChatTranscriptHeightPx((prev) => (prev === h ? prev : h));
+    };
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => {
+        requestAnimationFrame(measure);
+      });
+      if (modePageLayoutRef.current) {
+        ro.observe(modePageLayoutRef.current);
+      }
+      const mainEl = document.getElementById("main-content");
+      if (mainEl) {
+        ro.observe(mainEl);
+      }
+      if (chatComposerShellRef.current) {
+        ro.observe(chatComposerShellRef.current);
+      }
+    }
+
+    measure();
+    window.addEventListener("resize", measure);
+
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [
+    layout,
+    configOpen,
+    chatMessages.length,
+    busy,
+    inferPhase,
+    cancelling,
+    runDurationMs,
+    err,
+    chatComposerText,
+  ]);
+
   const saveDraftToList = useCallback(async () => {
     if (!draft || !modeId) return;
     setErr(null);
@@ -362,32 +427,36 @@ export function ModePage() {
     }
   }, [draft, modes, modeId, refreshModes]);
 
-  const run = useCallback(async () => {
-    if (!draft || !inputText.trim() || !modeId) return;
-    lastRunInputRef.current = inputText.trim();
-    streamOutRef.current = "";
-    setErr(null);
-    setOut("");
-    setInferPhase(null);
-    setRunDurationMs(null);
-    setRunStartedAt(Date.now());
-    setCancelling(false);
-    setBusy(true);
-    try {
-      await invoke("run_mode", {
-        modeId,
-        input: inputText,
-        locale: null,
-        fromLang: layout === "plain" ? null : fromLang,
-        toLang: layout === "plain" ? null : toLang,
-      });
-    } catch (e) {
-      setErr(String(e));
+  const run = useCallback(
+    async (inputOverride?: string) => {
+      const effectiveInput = (inputOverride ?? inputText).trim();
+      if (!draft || !effectiveInput || !modeId) return;
+      lastRunInputRef.current = effectiveInput;
+      streamOutRef.current = "";
+      setErr(null);
+      setOut("");
       setInferPhase(null);
-      setRunStartedAt(null);
-      setBusy(false);
-    }
-  }, [draft, inputText, modeId, layout, fromLang, toLang]);
+      setRunDurationMs(null);
+      setRunStartedAt(Date.now());
+      setCancelling(false);
+      setBusy(true);
+      try {
+        await invoke("run_mode", {
+          modeId,
+          input: effectiveInput,
+          locale: null,
+          fromLang: layout === "plain" ? null : fromLang,
+          toLang: layout === "plain" ? null : toLang,
+        });
+      } catch (e) {
+        setErr(String(e));
+        setInferPhase(null);
+        setRunStartedAt(null);
+        setBusy(false);
+      }
+    },
+    [draft, inputText, modeId, layout, fromLang, toLang],
+  );
 
   const onPickModel = useCallback(
     async (modelId: string) => {
@@ -486,38 +555,80 @@ export function ModePage() {
     setChatComposerText("");
   }, [modeId]);
 
-  const sendChat = useCallback(async () => {
-    if (!draft || !modeId || layout !== "chat") return;
-    const text = chatComposerText.trim();
-    if (!text) return;
+  const sendChat = useCallback(
+    async (textOverride?: string) => {
+      if (!draft || !modeId || layout !== "chat") return;
+      const text = (textOverride ?? chatComposerText).trim();
+      if (!text) return;
 
-    const msgsForInfer = [...chatMessages, { role: "user" as const, content: text }];
-    streamModeRef.current = "chat";
-    streamOutRef.current = "";
-    setErr(null);
-    setInferPhase(null);
-    setRunDurationMs(null);
-    setRunStartedAt(Date.now());
-    setCancelling(false);
-    setChatComposerText("");
-    setChatMessages([...msgsForInfer, { role: "assistant", content: "" }]);
-    setBusy(true);
-
-    try {
-      await invoke("run_mode_chat", {
-        modeId,
-        messages: msgsForInfer,
-      });
-    } catch (e) {
-      streamModeRef.current = "legacy";
-      setErr(String(e));
-      setChatMessages(msgsForInfer);
-      setChatComposerText(text);
+      const msgsForInfer = [...chatMessages, { role: "user" as const, content: text }];
+      streamModeRef.current = "chat";
+      streamOutRef.current = "";
+      setErr(null);
       setInferPhase(null);
-      setRunStartedAt(null);
-      setBusy(false);
+      setRunDurationMs(null);
+      setRunStartedAt(Date.now());
+      setCancelling(false);
+      setChatComposerText("");
+      setChatMessages([...msgsForInfer, { role: "assistant", content: "" }]);
+      setBusy(true);
+
+      try {
+        await invoke("run_mode_chat", {
+          modeId,
+          messages: msgsForInfer,
+        });
+      } catch (e) {
+        streamModeRef.current = "legacy";
+        setErr(String(e));
+        setChatMessages(msgsForInfer);
+        setChatComposerText(text);
+        setInferPhase(null);
+        setRunStartedAt(null);
+        setBusy(false);
+      }
+    },
+    [draft, modeId, layout, chatComposerText, chatMessages],
+  );
+
+  const pasteAndSendChat = useCallback(async () => {
+    if (busy || !modelBinding?.effective_model_id) return;
+    setErr(null);
+    try {
+      const clip = (await navigator.clipboard.readText()).trim();
+      if (!clip) {
+        setErr("Clipboard is empty or whitespace only.");
+        return;
+      }
+      await sendChat(clip);
+    } catch (e) {
+      setErr(
+        e instanceof Error
+          ? e.message
+          : "Could not read the clipboard. Check permissions or try again.",
+      );
     }
-  }, [draft, modeId, layout, chatComposerText, chatMessages]);
+  }, [busy, modelBinding?.effective_model_id, sendChat]);
+
+  const pasteAndRunLegacy = useCallback(async () => {
+    if (busy || !modelBinding?.effective_model_id) return;
+    setErr(null);
+    try {
+      const clip = await navigator.clipboard.readText();
+      if (!clip.trim()) {
+        setErr("Clipboard is empty or whitespace only.");
+        return;
+      }
+      setInputText(clip);
+      await run(clip);
+    } catch (e) {
+      setErr(
+        e instanceof Error
+          ? e.message
+          : "Could not read the clipboard. Check permissions or try again.",
+      );
+    }
+  }, [busy, modelBinding?.effective_model_id, run]);
 
   useEffect(() => {
     if (layout !== "chat") return;
@@ -552,28 +663,25 @@ export function ModePage() {
   }
 
   const isChat = layout === "chat";
+  const showLangInConfig = !isChat && layout !== "plain";
 
   return (
     <div
+      ref={modePageLayoutRef}
       className={cn("mx-auto flex flex-col gap-6", isChat ? "max-w-4xl" : "max-w-3xl")}
     >
-      <header>
+      <header className="flex items-start justify-between gap-4">
         <h2 className="text-2xl font-semibold tracking-tight">{draft.name}</h2>
-        <p className="text-sm text-muted-foreground">
-          {isChat ? (
-            <>
-              Conversation below uses your configured system prompt and model. Older
-              chats are listed in Archive;{" "}
-              <strong className="font-medium">New chat</strong> starts an empty thread.
-            </>
-          ) : (
-            <>
-              Use input and output below. Open{" "}
-              <strong className="font-medium">Mode configuration</strong> for name,
-              system prompt, languages in/out, and model.
-            </>
-          )}
-        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0 gap-2"
+          onClick={() => setConfigOpen(true)}
+        >
+          <Settings2 className="size-4" aria-hidden />
+          Edit configuration
+        </Button>
       </header>
 
       {err ? (
@@ -582,33 +690,16 @@ export function ModePage() {
         </Alert>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <button
-            type="button"
-            className="flex w-full items-start justify-between gap-3 rounded-md text-left outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
-            aria-expanded={configOpen}
-            onClick={() => setConfigOpen((o) => !o)}
-          >
-            <div className="min-w-0 flex-1 space-y-1">
-              <CardTitle className="text-base">Mode configuration</CardTitle>
-              <CardDescription>
-                {isChat
-                  ? "Name, system prompt, and which installed GGUF powers this Chat page."
-                  : "Name, system prompt, input and output language, then which installed model runs for this page."}
-              </CardDescription>
-            </div>
-            <ChevronDown
-              className={cn(
-                "mt-0.5 size-5 shrink-0 text-muted-foreground transition-transform",
-                configOpen && "rotate-180",
-              )}
-              aria-hidden
-            />
-          </button>
-        </CardHeader>
-        {configOpen ? (
-          <CardContent className="flex flex-col gap-6 pt-0">
+      <Dialog open={configOpen} onOpenChange={setConfigOpen}>
+        <DialogContent
+          aria-describedby={undefined}
+          className="max-h-[min(90vh,800px)] gap-0 overflow-y-auto p-0 sm:max-w-xl"
+        >
+          <div className="flex flex-col gap-6 p-6 pb-4">
+            <DialogHeader className="space-y-2 pr-8">
+              <DialogTitle>Mode configuration</DialogTitle>
+            </DialogHeader>
+
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="mode-name">Name</Label>
@@ -634,16 +725,11 @@ export function ModePage() {
                       setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d))
                     }
                     placeholder="Optional persistent instruction (empty is fine for custom modes)."
-                    className="min-h-[120px] max-h-[95vh] resize-y overflow-y-auto pr-10 font-mono text-sm"
+                    className="min-h-[120px] max-h-[40vh] resize-y overflow-y-auto pr-10 font-mono text-sm"
                   />
                 </div>
               </div>
-              {isChat ? (
-                <p className="text-xs text-muted-foreground">
-                  Reply language follows each user message automatically (fallback
-                  English when unclear). No fixed “language in / out” for Chat.
-                </p>
-              ) : (
+              {!isChat && showLangInConfig ? (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="cfg-from">Language in</Label>
@@ -676,17 +762,13 @@ export function ModePage() {
                     </Select>
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
 
             <Separator />
 
             <div className="flex flex-col gap-3">
               <h3 className="text-sm font-medium">Model</h3>
-              <p className="text-xs text-muted-foreground">
-                Choose an installed GGUF. Clear the override to use the{" "}
-                <strong>default model</strong> from Model library.
-              </p>
               {installed.length === 0 ? (
                 <Alert>
                   <AlertDescription>
@@ -739,95 +821,91 @@ export function ModePage() {
                     >
                       Use default model from library
                     </Button>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Using the default model from Model library (no per-mode override).
-                    </p>
-                  )}
+                  ) : null}
                 </>
               )}
             </div>
+          </div>
 
-            <Separator />
-
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button type="button" onClick={() => void saveDraftToList()}>
-                Save mode
-              </Button>
-              {draft.builtin ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    void (async () => {
-                      setErr(null);
-                      try {
-                        await invoke("reset_mode_to_default", { modeId: draft.id });
-                        await refreshModes();
-                      } catch (e) {
-                        setErr(String(e));
-                      }
-                    })();
-                  }}
-                >
-                  <RotateCcw aria-hidden />
-                  Reset to default
-                </Button>
-              ) : null}
-              {!draft.builtin ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => {
-                    void (async () => {
-                      setErr(null);
-                      try {
-                        await invoke("delete_mode", {
-                          modeId: draft.id,
-                        });
-                        removeModeRunArchiveStorage(draft.id);
-                        removeChatSessionArchiveStorage(draft.id);
-                        await refreshModes();
-                        navigate(DEFAULT_MODE_ROUTE, { replace: true });
-                      } catch (e) {
-                        setErr(String(e));
-                      }
-                    })();
-                  }}
-                >
-                  <Trash2 aria-hidden />
-                  Delete
-                </Button>
-              ) : null}
+          <DialogFooter className="flex flex-row flex-wrap justify-end gap-2 border-t border-border bg-muted/30 p-4 sm:space-x-0">
+            <Button type="button" onClick={() => void saveDraftToList()}>
+              Save mode
+            </Button>
+            {draft.builtin ? (
               <Button
                 type="button"
-                variant="secondary"
+                variant="outline"
                 onClick={() => {
-                  const base = draft;
-                  const copy: ModeDefinition = {
-                    ...base,
-                    id: `mode-${crypto.randomUUID()}`,
-                    name: `${base.name} (copy)`,
-                    builtin: false,
-                  };
                   void (async () => {
                     setErr(null);
                     try {
-                      await invoke("set_modes", { modes: [...modes, copy] });
+                      await invoke("reset_mode_to_default", { modeId: draft.id });
                       await refreshModes();
-                      navigate(`/mode/${copy.id}`, { replace: false });
                     } catch (e) {
                       setErr(String(e));
                     }
                   })();
                 }}
               >
-                Duplicate
+                <RotateCcw aria-hidden />
+                Reset to default
               </Button>
-            </div>
-          </CardContent>
-        ) : null}
-      </Card>
+            ) : null}
+            {!draft.builtin ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  void (async () => {
+                    setErr(null);
+                    try {
+                      await invoke("delete_mode", {
+                        modeId: draft.id,
+                      });
+                      removeModeRunArchiveStorage(draft.id);
+                      removeChatSessionArchiveStorage(draft.id);
+                      await refreshModes();
+                      setConfigOpen(false);
+                      navigate(DEFAULT_MODE_ROUTE, { replace: true });
+                    } catch (e) {
+                      setErr(String(e));
+                    }
+                  })();
+                }}
+              >
+                <Trash2 aria-hidden />
+                Delete
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                const base = draft;
+                const copy: ModeDefinition = {
+                  ...base,
+                  id: `mode-${crypto.randomUUID()}`,
+                  name: `${base.name} (copy)`,
+                  builtin: false,
+                };
+                void (async () => {
+                  setErr(null);
+                  try {
+                    await invoke("set_modes", { modes: [...modes, copy] });
+                    await refreshModes();
+                    setConfigOpen(false);
+                    navigate(`/mode/${copy.id}`, { replace: false });
+                  } catch (e) {
+                    setErr(String(e));
+                  }
+                })();
+              }}
+            >
+              Duplicate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {isChat ? (
         <Card>
@@ -847,34 +925,50 @@ export function ModePage() {
             </Button>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <ScrollArea className="h-[min(55vh,480px)] rounded-md border bg-muted/20 p-3">
-              <div className="flex flex-col gap-3">
-                {chatMessages.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No messages yet. Type below and press Send (Enter sends, Shift+Enter
-                    for a new line).
-                  </p>
-                ) : (
-                  chatMessages.map((m, i) => (
-                    <div
-                      key={`${i}-${m.role}`}
-                      className={cn(
-                        "flex rounded-lg border px-3 py-2",
-                        m.role === "user"
-                          ? "ml-6 border-muted-foreground/20 bg-background"
-                          : "mr-6 border-primary/25 bg-muted/40",
-                      )}
-                    >
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                          {m.role === "user" ? "You" : "Assistant"}
-                        </p>
-                        <div className="relative">
-                          <CopyTextControl
-                            text={m.content}
-                            className="absolute right-0 top-0 z-10"
-                          />
-                          <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap break-words pr-12 font-mono text-sm">
+            <div
+              ref={chatTranscriptSlotRef}
+              className="min-h-[7rem] shrink-0"
+              style={{ height: chatTranscriptHeightPx }}
+            >
+              <ScrollArea className="h-full rounded-md border bg-muted/20 p-3">
+                <div className="flex flex-col gap-3">
+                  {chatMessages.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No messages yet. Type below and press Send (Enter sends,
+                      Shift+Enter for a new line).
+                    </p>
+                  ) : (
+                    chatMessages.map((m, i) => (
+                      <div
+                        key={`${i}-${m.role}`}
+                        className={cn(
+                          "relative min-w-0 rounded-lg border pl-3 pr-10 py-2",
+                          m.role === "user"
+                            ? "ml-6 border-muted-foreground/20 bg-background"
+                            : "mr-6 border-primary/25 bg-muted/40",
+                        )}
+                      >
+                        <CopyTextControl
+                          text={m.content}
+                          className="absolute right-1.5 top-1.5 z-10"
+                        />
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                            {m.role === "user" ? (
+                              "You"
+                            ) : (
+                              <span
+                                className={cn(
+                                  busy &&
+                                    i === chatMessages.length - 1 &&
+                                    "maguna-label-thinking",
+                                )}
+                              >
+                                Maguna
+                              </span>
+                            )}
+                          </p>
+                          <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap break-words font-mono text-sm">
                             {m.content ||
                               (m.role === "assistant" && busy
                                 ? inferPhase === "prefill"
@@ -884,103 +978,116 @@ export function ModePage() {
                           </pre>
                         </div>
                       </div>
-                    </div>
-                  ))
-                )}
-                <div ref={transcriptEndRef} />
-              </div>
-            </ScrollArea>
+                    ))
+                  )}
+                  <div ref={transcriptEndRef} />
+                </div>
+              </ScrollArea>
+            </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="chat-composer">Message</Label>
-              <div className="relative">
-                <CopyTextControl
-                  text={chatComposerText}
-                  className="absolute right-1.5 top-1.5 z-10"
-                />
-                <Textarea
-                  ref={chatComposerRef}
-                  id="chat-composer"
-                  value={chatComposerText}
-                  onChange={(e) => setChatComposerText(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      void sendChat();
-                    }
+            <div ref={chatComposerShellRef} className="flex shrink-0 flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="chat-composer">Message</Label>
+                <div className="relative">
+                  <CopyTextControl
+                    text={chatComposerText}
+                    className="absolute right-1.5 top-1.5 z-10"
+                  />
+                  <Textarea
+                    ref={chatComposerRef}
+                    id="chat-composer"
+                    value={chatComposerText}
+                    onChange={(e) => setChatComposerText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        void sendChat();
+                      }
+                    }}
+                    className="min-h-24 resize-none overflow-y-hidden px-3 py-2 pr-10"
+                    placeholder="Write a message…"
+                    disabled={busy}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void pasteAndSendChat()}
+                  disabled={
+                    busy || modelBinding === null || !modelBinding.effective_model_id
+                  }
+                >
+                  <ClipboardPaste aria-hidden />
+                  Paste and run
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void sendChat()}
+                  disabled={
+                    busy ||
+                    !chatComposerText.trim() ||
+                    modelBinding === null ||
+                    !modelBinding.effective_model_id
+                  }
+                >
+                  {busy ? (
+                    <>
+                      <Loader2 className="animate-spin" aria-hidden />
+                      {inferPhase === "prefill"
+                        ? "Encoding prompt…"
+                        : inferPhase === "generating"
+                          ? "Generating…"
+                          : "Starting…"}
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles aria-hidden />
+                      Send
+                    </>
+                  )}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!busy || cancelling}
+                  onClick={() => {
+                    userCancelledChatRef.current = streamModeRef.current === "chat";
+                    setCancelling(true);
+                    void invoke("cancel_generation").catch(() => {
+                      setCancelling(false);
+                    });
                   }}
-                  className="min-h-24 resize-none overflow-y-hidden px-3 py-2 pr-10"
-                  placeholder="Write a message…"
-                  disabled={busy}
-                />
+                >
+                  {cancelling ? (
+                    <>
+                      <Loader2 className="animate-spin" aria-hidden />
+                      Cancelling...
+                    </>
+                  ) : (
+                    "Cancel"
+                  )}
+                </Button>
               </div>
+              {busy && cancelling ? (
+                <p className="text-xs text-muted-foreground">
+                  Cancel requested. Stopping generation and cleaning up…
+                </p>
+              ) : null}
+              {busy && inferPhase === "prefill" ? (
+                <p className="text-xs text-muted-foreground">
+                  Absorbing the prompt on CPU is often the slowest part; streamed text
+                  appears once this finishes.
+                </p>
+              ) : null}
+              {runDurationMs !== null ? (
+                <p className="text-xs text-muted-foreground">
+                  Last response time: {formatDurationMs(runDurationMs)}
+                </p>
+              ) : null}
             </div>
-
-            <div className="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                onClick={() => void sendChat()}
-                disabled={
-                  busy ||
-                  !chatComposerText.trim() ||
-                  modelBinding === null ||
-                  !modelBinding.effective_model_id
-                }
-              >
-                {busy ? (
-                  <>
-                    <Loader2 className="animate-spin" aria-hidden />
-                    {inferPhase === "prefill"
-                      ? "Encoding prompt…"
-                      : inferPhase === "generating"
-                        ? "Generating…"
-                        : "Starting…"}
-                  </>
-                ) : (
-                  <>
-                    <Sparkles aria-hidden />
-                    Send
-                  </>
-                )}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={!busy || cancelling}
-                onClick={() => {
-                  userCancelledChatRef.current = streamModeRef.current === "chat";
-                  setCancelling(true);
-                  void invoke("cancel_generation").catch(() => {
-                    setCancelling(false);
-                  });
-                }}
-              >
-                {cancelling ? (
-                  <>
-                    <Loader2 className="animate-spin" aria-hidden />
-                    Cancelling...
-                  </>
-                ) : (
-                  "Cancel"
-                )}
-              </Button>
-            </div>
-            {busy && cancelling ? (
-              <p className="text-xs text-muted-foreground">
-                Cancel requested. Stopping generation and cleaning up…
-              </p>
-            ) : null}
-            {busy && inferPhase === "prefill" ? (
-              <p className="text-xs text-muted-foreground">
-                Absorbing the prompt on CPU is often the slowest part; streamed text
-                appears once this finishes.
-              </p>
-            ) : null}
-            {runDurationMs !== null ? (
-              <p className="text-xs text-muted-foreground">
-                Last response time: {formatDurationMs(runDurationMs)}
-              </p>
-            ) : null}
 
             <Separator />
 
@@ -1076,6 +1183,17 @@ export function ModePage() {
               </div>
             </div>
             <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void pasteAndRunLegacy()}
+                disabled={
+                  busy || modelBinding === null || !modelBinding.effective_model_id
+                }
+              >
+                <ClipboardPaste aria-hidden />
+                Paste and run
+              </Button>
               <Button
                 type="button"
                 onClick={() => void run()}
@@ -1247,27 +1365,46 @@ export function AddModeNavButton() {
   const navigate = useNavigate();
   const { modes, refreshModes } = useModesNav();
 
+  const createAndOpen = useCallback(
+    (def: ModeDefinition) => {
+      void (async () => {
+        try {
+          await invoke("set_modes", { modes: [...modes, def] });
+          await refreshModes();
+          navigate(`/mode/${def.id}`);
+        } catch (e) {
+          console.error(e);
+        }
+      })();
+    },
+    [modes, refreshModes, navigate],
+  );
+
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="w-full justify-start gap-2"
-      onClick={() => {
-        void (async () => {
-          try {
-            const n = newCustomMode();
-            await invoke("set_modes", { modes: [...modes, n] });
-            await refreshModes();
-            navigate(`/mode/${n.id}`);
-          } catch (e) {
-            console.error(e);
-          }
-        })();
-      }}
-    >
-      <Plus aria-hidden />
-      Add mode
-    </Button>
+    <div className="flex flex-col gap-1.5">
+      <p className="px-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Add mode
+      </p>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-full justify-start gap-2"
+        onClick={() => createAndOpen(createNewCustomMode("chat"))}
+      >
+        <MessageSquare className="size-4 shrink-0" aria-hidden />
+        Chat
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="w-full justify-start gap-2"
+        onClick={() => createAndOpen(createNewCustomMode("simple"))}
+      >
+        <SquareSplitHorizontal className="size-4 shrink-0" aria-hidden />
+        One input / one output
+      </Button>
+    </div>
   );
 }

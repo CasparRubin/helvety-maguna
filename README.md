@@ -1,6 +1,8 @@
 # Maguna
 
-Desktop app for **GGUF models** you keep on disk: browse the catalog, download or import weights, set a **default**, then pick a mode and an installed GGUF **per mode**. The built-in modes are **Chat** (multi-turn assistant, replies follow the language of your latest message with English fallback), **Correction DE**, **Correction EN**, **Translate DE → EN**, and **Translate EN → DE**, plus any **custom** modes you add. The network is used only to **download weights** (for example from Hugging Face), not to run inference in the cloud.
+Desktop app for **GGUF models** you keep on disk: browse the catalog, download or import weights, set a **default**, then pick a mode and an installed GGUF **per mode**. The built-in modes are **Chat** (multi-turn conversation; the UI labels assistant replies **Maguna**, and answers follow the language of your latest message with English fallback), **Correction DE**, **Correction EN**, **Translate DE → EN**, and **Translate EN → DE**, plus any **custom** modes you add. Inference runs **on device** via llama.cpp; the network is used only to **download weights** (for example from Hugging Face)—there is **no hosted chat API inside the app**.
+
+Maguna **always** prepends a **guardrails** paragraph to every mode’s system instructions (neutral tone and safety-themed guidance; **best-effort**—local models do not honor instructions reliably). You cannot turn guardrails off; you may replace the built-in wording with a **custom** paragraph under **Model library → Output guardrails**. The same built-in text, publisher info (`helvety.com`), acceptable-use summary, safe-use tips, and legal disclaimers are on **Settings** (`/settings`, read-only for policy text).
 
 On first launch the app opens **Chat**; other routes redirect **`/`**, **`/modes`**, and **`/spelling`** to **`/mode/chat`**; **`/translate`** still goes to the DE → EN mode.
 
@@ -26,14 +28,15 @@ bun install
 bun run dev
 ```
 
-That starts the full app: **Model library** (catalog, download, import, default model) and **Modes** (per-mode model, prompts, local inference).
+That starts the full app: **Model library** (catalog, download, import, default model, guardrails custom policy), **Settings** (Helvety / Maguna basics, read-only guardrails reference, terms and disclaimers), and **Modes** (sidebar navigation plus per-mode workspaces; configure each mode from its page via **Edit configuration**).
 
 ### Using the app
 
-- **Model library:** install models from the catalog or import a GGUF; set the **default** used by modes that do not override it.
-- **Modes (configuration):** every mode lets you edit **Name**, **System prompt**, **Model**, Save / Reset / Duplicate (built-ins cannot be deleted). **Correction** and **Translate** modes also show **Language in** and **Language out** (German and English today). **Chat** does **not**: reply language follows each user message automatically (fallback English when unclear). Inference always uses weights on device only—not a hosted API inside the app.
+- **Model library:** install models from the catalog or import a GGUF; set the **default** used by modes that do not override it. **Output guardrails:** a global policy paragraph is **always** prepended ahead of each mode’s system prompt (built-in wording by default). You may paste a **custom** paragraph instead; both are persisted in app settings (see configuration files below). Edits to custom text happen here; **Settings** shows the active policy read-only.
+- **Settings (`/settings`):** **[Helvety](https://helvety.com)** link; **read-only** **built-in** guardrail paragraph (used whenever no custom paragraph is set); active **custom** policies also appear **read-only** when in use; safe-use guidelines; Helvety-authored **acceptable use** summary and liability disclaimers—**informational only** (not individualized legal counsel).
+- **Modes (configuration):** each mode page shows the mode **name**, **Edit configuration** (top right, opens a **dialog** titled **Mode configuration**), then the workspace (**conversation** + composer for Chat, or **Input** / **Output** otherwise). In the dialog: **Name**, **System prompt**, **Model**, **Save mode**, **Duplicate**, **Reset to default** (built-in modes only), and **Delete** (custom modes only; built-ins cannot be removed). **Correction** and **Translate** layouts also include **Language in** and **Language out** (German and English today). **Chat** omits those selectors: reply language follows each user message automatically (fallback English when unclear). Inference always uses weights on device only—not a hosted API inside the app.
 - **Correction / Translate pages:** compact **Input** and **Output** areas with **copy** controls; **Enter** runs (**Shift+Enter** adds a newline). Each successful finished run appears in **Archive** on that mode’s page.
-- **Chat page:** a **conversation** transcript, **composer** (**Enter** sends, **Shift+Enter** newline), **Send / Cancel**, and **New chat**. Completed replies update the current thread and are saved under **Archive** as **sessions** (full message history); open a row to continue, delete one chat, or **Clear archive**. Chat storage is separate per mode id (`localStorage` keys `maguna.chatSessions.v1:<modeId>` for Chat; correction/translate archives use `maguna.modeRunArchive.v1:<modeId>`).
+- **Chat page:** **conversation** transcript where assistant turns are labeled **Maguna** in the UI (roles in storage and when calling the backend remain `user` / `assistant`). While a reply is generating, that label shows a subtle left-to-right highlight. **Composer** (**Enter** sends, **Shift+Enter** newline), **Send**, **Cancel**, **Paste and run**, and **New chat**. Transcript height tracks the main pane (`#main-content`) so the **Message** area and actions usually stay visible above **Archive**—scroll the page when you need the archive list. Completed replies update the current thread and are saved under **Archive** as **sessions** (full message history); open a row to continue, delete one chat, or **Clear archive**. Chat storage is separate per mode id (`localStorage` keys `maguna.chatSessions.v1:<modeId>` for Chat; correction/translate archives use `maguna.modeRunArchive.v1:<modeId>`).
 - **Appearance:** sidebar **Light** / **Dark**; unsaved installs follow the OS. Choice is persisted (same key as [`index.html`](index.html)—see [`THEME_STORAGE_KEY`](src/context/theme-context.tsx) in [`src/context/theme-context.tsx`](src/context/theme-context.tsx)).
 
 ### Where models are stored
@@ -48,6 +51,17 @@ Weights live under a single **`Models`** directory (each catalog/import gets its
 While catalog models **download**, the in-progress file is **`maguna/tmp/<model_id>.partial`** under Tauri’s per-user app data (for example **`%APPDATA%\com.helvety.maguna\maguna\tmp\`** on Windows, **`~/Library/Application Support/com.helvety.maguna/maguna/tmp/`** on macOS, typically **`~/.local/share/com.helvety.maguna/maguna/tmp/`** on Linux). After the stream (and a SHA256 check when the catalog lists one), Maguna **`rename`s** that file into **`Models`** when it is on the same volume, or **`copy`s** then **deletes** the partial when `Models` is on another drive. That step can take a long time across volumes; the UI shows **Finishing install**. Failed downloads, checksum mismatches, and failed installs **remove the partial when the OS allows it** so temp space is reclaimed; a rare error after a cross-volume copy may ask you to delete a leftover path manually.
 
 In **Model library → Installed models**, use **Open models folder** for the **active** weights directory your file manager should open (**not** necessarily the `tmp` folder above).
+
+### Configuration beside models
+
+Under **`maguna/`** in the same Tauri app-data tree as **`tmp/`** (see paths above—for example **`…/maguna/modes.json`** on disk):
+
+| File                | Contents                                                                                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`modes.json`**    | Mode list: ids, names, system prompts, layout, builtin flags                                                                                              |
+| **`settings.json`** | Global default GGUF id, per-mode GGUF overrides, `guardrails_enabled` (legacy field; always treated as on at runtime), optional **custom guardrail** text |
+
+Treat these as portable user data backups if you reinstall the shell.
 
 ### Scripts
 
@@ -77,6 +91,17 @@ Running a **7B** quantized model purely on **CPU** often means **tens of seconds
 - **No cloud API is required.** For **fast** answers without tuning local GPU builds, vendors’ hosted APIs remain an option—it is a latency/cost/trade-secret trade-off, not a technical necessity.
 
 Beyond hardware, smaller models (**1B–3B** GGUF), slightly coarser quantization, and shorter prompts/context all reduce wall-clock time offline.
+
+## GitHub releases (downloadable builds)
+
+CI builds and tests on every push in [`.github/workflows/ci.yml`](.github/workflows/ci.yml). **Installers** are produced by [`.github/workflows/release.yml`](.github/workflows/release.yml):
+
+1. Bump **`version`** in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) if needed (it must match the tag, e.g. `0.1.0` → tag `v0.1.0`).
+2. Commit and push to `main`.
+3. Create and push a tag: `git tag v0.1.0 && git push origin v0.1.0`  
+   Or open **Actions → Release → Run workflow** (manual run also uses the version from `tauri.conf.json`).
+
+The workflow uploads **macOS**, **Windows**, and **Linux** bundles to a **draft** GitHub Release (`releaseDraft: true` in the workflow—publish it from the Releases page when ready). Ensure **Settings → Actions → General → Workflow permissions** allows **Read and write** so `GITHUB_TOKEN` can upload assets.
 
 ## License
 

@@ -1,0 +1,135 @@
+/** @vitest-environment jsdom */
+
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { GuardrailsSettings } from "@/lib/types";
+import { SettingsPage } from "./SettingsPage";
+import * as TauriApi from "@/lib/tauri-api";
+
+vi.mock("@/lib/tauri-api", () => ({
+  invoke: vi.fn(),
+}));
+
+function renderSettings(invokePayload: GuardrailsSettings) {
+  vi.mocked(TauriApi.invoke).mockImplementation((cmd: string) => {
+    if (cmd === "get_guardrails_settings") {
+      return Promise.resolve(invokePayload);
+    }
+    return Promise.reject(new Error(`unexpected invoke in SettingsPage test: ${cmd}`));
+  });
+  return render(
+    <MemoryRouter initialEntries={["/settings"]}>
+      <SettingsPage />
+    </MemoryRouter>,
+  );
+}
+
+describe("SettingsPage", () => {
+  afterEach(() => {
+    cleanup();
+    vi.mocked(TauriApi.invoke).mockReset();
+  });
+
+  const baseBuiltin = "built-in-parity-text-from-rust-stub\nline two";
+
+  it("loads Helvety link, guardrails reference, and Model library link from invoke", async () => {
+    renderSettings({
+      enabled: true,
+      customText: null,
+      builtInPolicyText: baseBuiltin,
+    });
+
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
+    await waitFor(() => {
+      expect(TauriApi.invoke).toHaveBeenCalledWith("get_guardrails_settings");
+    });
+    await waitFor(() => {
+      const builtInArea = screen.getByLabelText(
+        /Built-in Maguna policy/i,
+      ) as HTMLTextAreaElement;
+      expect(builtInArea.readOnly).toBe(true);
+      expect(builtInArea.value).toContain("built-in-parity-text-from-rust-stub");
+    });
+
+    expect(screen.getByRole("link", { name: /Helvety/i })).toHaveAttribute(
+      "href",
+      "https://helvety.com",
+    );
+    expect(screen.getByRole("link", { name: /Model library/i })).toHaveAttribute(
+      "href",
+      "/models",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Guardrails are on using the built-in policy below/i),
+      ).toBeTruthy();
+    });
+
+    expect(
+      screen.getByText(/To replace the built-in prepended policy with custom wording/i),
+    ).toBeInTheDocument();
+  });
+
+  it("shows Helvety-authored acceptable use summary without vendor policy link-outs", async () => {
+    renderSettings({
+      enabled: true,
+      customText: null,
+      builtInPolicyText: baseBuiltin,
+    });
+
+    await waitFor(() => {
+      expect(TauriApi.invoke).toHaveBeenCalledWith("get_guardrails_settings");
+    });
+
+    expect(screen.getByText("Acceptable use (summary)")).toBeInTheDocument();
+    expect(screen.getByText(/Serious illegality/i)).toBeInTheDocument();
+    expect(screen.getByText(/Child safety/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Practical habits when working with probabilistic outputs/i),
+    ).toBeInTheDocument();
+
+    expect(screen.queryByRole("link", { name: /OpenAI/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/openai\.com/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/anthropic/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/policies\.google/i)).not.toBeInTheDocument();
+  });
+
+  it("shows custom active copy and readonly custom textarea", async () => {
+    renderSettings({
+      enabled: true,
+      customText: "USER CUSTOM POLICY\nline 2",
+      builtInPolicyText: baseBuiltin,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /Guardrails are on with your custom policy \(prepended ahead of each mode prompt\)\./i,
+        ),
+      ).toBeTruthy();
+    });
+    await waitFor(() => {
+      const customArea = screen.getByLabelText(
+        /Your custom guardrail policy/i,
+      ) as HTMLTextAreaElement;
+      expect(customArea.readOnly).toBe(true);
+      expect(customArea.value).toBe("USER CUSTOM POLICY\nline 2");
+    });
+  });
+
+  it("surfaces invoke errors", async () => {
+    vi.mocked(TauriApi.invoke).mockRejectedValueOnce(new Error("bridge down"));
+    render(
+      <MemoryRouter>
+        <SettingsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/bridge down/i)).toBeTruthy();
+    });
+  });
+});

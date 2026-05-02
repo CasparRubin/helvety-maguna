@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { invoke, listen } from "@/lib/tauri-api";
 import {
   FolderOpen,
@@ -7,6 +8,7 @@ import {
   HardDrive,
   FolderInput,
   Loader2,
+  Shield,
 } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -23,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
   formatApproxDownloadGb,
@@ -32,7 +35,7 @@ import {
 } from "@/lib/catalog-order";
 import { compactModelDisplayName } from "@/lib/model-display";
 import { cn } from "@/lib/utils";
-import type { CatalogEntry, InstalledModel } from "@/lib/types";
+import type { CatalogEntry, GuardrailsSettings, InstalledModel } from "@/lib/types";
 
 type DownloadPhase = "downloading" | "installing";
 
@@ -52,18 +55,26 @@ export function ModelsPage() {
   const [settingDefaultModelId, setSettingDefaultModelId] = useState<string | null>(
     null,
   );
+  const [guardrailsDraft, setGuardrailsDraft] = useState<{ customText: string }>({
+    customText: "",
+  });
+  const [guardrailsSaving, setGuardrailsSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     setError(null);
     try {
-      const [c, i, a] = await Promise.all([
+      const [c, i, a, g] = await Promise.all([
         invoke<CatalogEntry[]>("get_catalog"),
         invoke<InstalledModel[]>("list_installed_models"),
         invoke<string | null>("get_active_model_id"),
+        invoke<GuardrailsSettings>("get_guardrails_settings"),
       ]);
       setCatalog(c);
       setInstalled(i);
       setActiveId(a);
+      setGuardrailsDraft({
+        customText: g.customText ?? "",
+      });
     } catch (e) {
       setError(String(e));
     }
@@ -129,6 +140,27 @@ export function ModelsPage() {
     },
     [refresh, settingDefaultModelId],
   );
+
+  const saveGuardrails = useCallback(async () => {
+    if (guardrailsSaving) return;
+    setGuardrailsSaving(true);
+    setError(null);
+    try {
+      await invoke("set_guardrails_settings", {
+        value: {
+          enabled: true,
+          customText:
+            guardrailsDraft.customText.trim().length > 0
+              ? guardrailsDraft.customText
+              : null,
+        },
+      });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setGuardrailsSaving(false);
+    }
+  }, [guardrailsDraft, guardrailsSaving]);
 
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
@@ -211,8 +243,9 @@ export function ModelsPage() {
             Installed models
           </CardTitle>
           <CardDescription>
-            The <strong>default</strong> model is used by any mode that has not chosen
-            its own installed GGUF in the sidebar.
+            The <strong>default</strong> model applies until a mode picks another
+            installed GGUF in <strong>Edit configuration</strong> on that mode&apos;s
+            page (or clears the override to use this default again).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -290,6 +323,71 @@ export function ModelsPage() {
               </ul>
             </ScrollArea>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Shield className="size-4 shrink-0" aria-hidden />
+            Output guardrails
+          </CardTitle>
+          <CardDescription>
+            Maguna always prefixes every mode&apos;s system instructions with a short
+            safety policy (neutral tone; no harmful, illegal, or sexually explicit
+            content). Offline models may still ignore prompts—this is best-effort, not a
+            hard filter.{" "}
+            <Link
+              to="/settings"
+              className="font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Settings
+            </Link>{" "}
+            shows the built-in wording read-only plus terms and disclaimers.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <p className="text-sm text-muted-foreground">
+            Guardrails cannot be turned off. They apply to correction, translation,
+            Chat, and custom modes.
+          </p>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="guardrails-custom">Custom policy (optional)</Label>
+            <Textarea
+              id="guardrails-custom"
+              rows={6}
+              disabled={guardrailsSaving}
+              placeholder="Leave blank to use Maguna&#39;s built-in policy."
+              value={guardrailsDraft.customText}
+              onChange={(e) =>
+                setGuardrailsDraft((d) => ({
+                  ...d,
+                  customText: e.target.value,
+                }))
+              }
+            />
+            <p className="text-xs text-muted-foreground">
+              If set, this text replaces the built-in paragraph; it still prepends ahead
+              of each mode&apos;s own system prompt.
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="w-fit"
+            disabled={guardrailsSaving}
+            onClick={() => void saveGuardrails()}
+          >
+            {guardrailsSaving ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                Saving...
+              </>
+            ) : (
+              "Save guardrails"
+            )}
+          </Button>
         </CardContent>
       </Card>
 

@@ -3,6 +3,7 @@ import {
   BookOpen,
   Languages,
   MessageSquare,
+  Settings,
   Sparkles,
   SpellCheck2,
 } from "lucide-react";
@@ -13,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ThemePreferenceRow } from "@/components/ThemePreferenceRow";
 import { ModelsPage } from "@/pages/ModelsPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 import { AddModeNavButton, ModePage } from "@/pages/ModePage";
 
 const navClass = ({ isActive }: { isActive: boolean }) =>
@@ -42,14 +44,14 @@ function AppShell() {
   return (
     <div className="flex h-screen w-screen overflow-hidden">
       <aside
-        className="flex w-60 shrink-0 flex-col border-r bg-card"
+        className="flex w-60 shrink-0 flex-col items-stretch border-r bg-card"
         aria-label="Main navigation"
       >
-        <div className="p-4 text-center">
+        <div className="w-full min-w-0 pb-12 text-center">
           <img
             src="/helvety_logo.svg"
             alt="Helvety logo"
-            className="mb-2 block h-auto w-full"
+            className="mb-12 block h-auto w-full max-w-none min-w-0"
           />
           <h1 className="text-3xl font-bold tracking-tight">Maguna</h1>
           <p className="text-xs text-muted-foreground">On-Device AI</p>
@@ -62,6 +64,10 @@ function AppShell() {
           <NavLink to="/models" className={navClass}>
             <BookOpen className="size-4 shrink-0" aria-hidden />
             Model library
+          </NavLink>
+          <NavLink to="/settings" className={navClass}>
+            <Settings className="size-4 shrink-0" aria-hidden />
+            Settings
           </NavLink>
           <Separator className="my-2" />
           <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -87,6 +93,7 @@ function AppShell() {
             <Routes>
               <Route path="/" element={<Navigate to="/mode/chat" replace />} />
               <Route path="/models" element={<ModelsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="/mode/:modeId" element={<ModePage />} />
               <Route path="/modes" element={<Navigate to="/mode/chat" replace />} />
               <Route path="/spelling" element={<Navigate to="/mode/chat" replace />} />
