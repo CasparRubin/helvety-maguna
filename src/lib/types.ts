@@ -13,6 +13,8 @@ export type CatalogEntry = {
   hf_repo: string;
   /** e.g. `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`, `qwen2_instruct`, `gemma2_it`, `moonshot_instruct`; bundled catalog supplies this; omitting defaults to Rust `tinyllama_v1`. */
   chat_template?: string;
+  /** ISO `YYYY-MM-DD` for the upstream instruct checkpoint release when known. */
+  release_date?: string | null;
 };
 
 /** Resolved model for a mode + optional per-mode override id. */
@@ -40,6 +42,7 @@ export type ModeDefinition = {
   /** Empty for custom modes is fine; Maguna only authors defaults for built-in correction + translate. */
   system_prompt: string;
   prompt_layout: PromptLayout;
+  /** Kept for saved modes / validation; generation length is inferred from your input at run time. */
   max_tokens: number;
   builtin: boolean;
 };

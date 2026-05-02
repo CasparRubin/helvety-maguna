@@ -15,7 +15,6 @@ use crate::state::AppState;
 use crate::storage::{self, InstalledModelDto};
 
 #[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ModeModelBinding {
     pub effective_model_id: Option<String>,
     pub override_model_id: Option<String>,
@@ -352,6 +351,18 @@ pub fn reset_mode_to_default(app: AppHandle, mode_id: String) -> Result<(), Stri
     modes::reset_builtin(&app, &mode_id).map_err(|e| e.to_string())
 }
 
+/// Caps how many new tokens the local engine may generate, from the formatted user turn.
+/// Correction and translation outputs are usually similar in length to the input; this
+/// scales with pasted text instead of a fixed UI preset (still clamped to backend limits).
+fn inferred_generation_cap_from_user_turn(user_turn: &str) -> usize {
+    const MIN: usize = 256;
+    const MAX: usize = 8192;
+    let chars = user_turn.chars().count();
+    let est_in_tokens = (chars / 3).clamp(1, MAX);
+    let cap = est_in_tokens.saturating_mul(2).saturating_add(384);
+    cap.clamp(MIN, MAX)
+}
+
 #[tauri::command]
 pub async fn run_mode(
     app: AppHandle,
@@ -410,14 +421,8 @@ pub async fn run_mode(
         from_lang.as_deref(),
         to_lang.as_deref(),
     );
-    run_task_inner(
-        &app,
-        &state,
-        &mode.system_prompt,
-        &user,
-        mode.max_tokens as usize,
-    )
-    .await
+    let max_tokens = inferred_generation_cap_from_user_turn(&user);
+    run_task_inner(&app, &state, &mode.system_prompt, &user, max_tokens).await
 }
 
 async fn run_task_inner(
@@ -439,12 +444,14 @@ async fn run_task_inner(
         let (model, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
         let prompt = template.format_prompt(system, user);
         let cancel = state.cancel_infer.clone();
-        let app = app.clone();
+        let app_h = app.clone();
+        // Inference uses its own current-thread Tokio driver for `llama_cpp` stream recv; keep it
+        // off the main async runtime to avoid `block_in_place` + `spawn_blocking` deadlocks.
         std::thread::spawn(move || {
             if let Err(e) =
-                inference::stream_chat_completion(&app, &model, prompt, max_tokens, &cancel)
+                inference::stream_chat_completion(&app_h, &model, prompt, max_tokens, &cancel)
             {
-                let _ = app.emit("inference-error", e);
+                let _ = app_h.emit("inference-error", e);
             }
         });
         Ok(())
@@ -512,6 +519,14 @@ mod validate_tests {
     fn validate_rejects_high_max_tokens() {
         let v = builtins_plus(vec![mode("x", "Bad", modes::PromptLayout::Plain, 9000)]);
         assert!(validate_modes(&v).is_err());
+    }
+
+    #[test]
+    fn inferred_generation_cap_scales_and_clamps() {
+        assert_eq!(super::inferred_generation_cap_from_user_turn(""), 386);
+        assert_eq!(super::inferred_generation_cap_from_user_turn("hello"), 386);
+        let long = "word ".repeat(5000);
+        assert_eq!(super::inferred_generation_cap_from_user_turn(&long), 8192);
     }
 
     #[test]

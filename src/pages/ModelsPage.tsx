@@ -26,7 +26,9 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import {
   formatApproxDownloadGb,
-  sortCatalogByRecommendation,
+  formatCatalogReleaseDate,
+  RECOMMENDED_CATALOG_MODEL_ID,
+  sortCatalogBySizeAscending,
 } from "@/lib/catalog-order";
 import { cn } from "@/lib/utils";
 import type { CatalogEntry, InstalledModel } from "@/lib/types";
@@ -93,7 +95,7 @@ export function ModelsPage() {
 
   const isInstalled = (id: string) => installed.some((m) => m.id === id);
 
-  const catalogSorted = useMemo(() => sortCatalogByRecommendation(catalog), [catalog]);
+  const catalogSorted = useMemo(() => sortCatalogBySizeAscending(catalog), [catalog]);
 
   const pct =
     downloadProgress &&
@@ -114,12 +116,9 @@ export function ModelsPage() {
         <p className="text-sm text-muted-foreground">
           Pick a model, download or import the GGUF, then set it as default if you want
           every mode to use it unless you choose otherwise on that mode&apos;s page.
-          Catalog entries record the prompt framing (“chat template”) for each
-          architecture. Imports guess it from the <strong>.gguf file name</strong> (and
-          your display name hints) when those look like a known model family. After the
-          downloading step fills in, Maguna shows <strong>Finishing install</strong>{" "}
-          while the file is moved into your model folder (large models can take minutes,
-          especially across drives).
+          After the downloading step fills in, Maguna shows{" "}
+          <strong>Finishing install</strong> while the file is moved into your model
+          folder (large models can take minutes, especially across drives).
         </p>
       </header>
 
@@ -224,10 +223,6 @@ export function ModelsPage() {
                     <div>
                       <p className="font-medium">{m.display_name}</p>
                       <p className="text-xs text-muted-foreground">{m.id}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Chat template:{" "}
-                        {(m.chat_template ?? "").trim() || "auto (from id)"}
-                      </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
@@ -274,71 +269,76 @@ export function ModelsPage() {
           Catalog
         </h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Ordered for quality (best picks first). Approximate download size is shown on
-          each card.
+          Smallest downloads first. Approximate size is on each card; one pick is
+          highlighted as recommended for most writing and translation use.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
-          {catalogSorted.map((entry, index) => (
-            <Card
-              key={entry.id}
-              className={cn(index === 0 && "border-primary/40 shadow-sm")}
-            >
-              <CardHeader className="space-y-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1 space-y-1">
-                    {index === 0 ? (
-                      <Badge variant="default" className="w-fit">
-                        Featured
-                      </Badge>
-                    ) : null}
-                    <CardTitle className="text-base leading-snug">
-                      {entry.display_name}
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">{entry.maker}</p>
+          {catalogSorted.map((entry) => {
+            const releasedLabel = formatCatalogReleaseDate(entry.release_date);
+            return (
+              <Card
+                key={entry.id}
+                className={cn(
+                  entry.id === RECOMMENDED_CATALOG_MODEL_ID &&
+                    "border-primary/40 shadow-sm",
+                )}
+              >
+                <CardHeader className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-1">
+                      {entry.id === RECOMMENDED_CATALOG_MODEL_ID ? (
+                        <Badge variant="default" className="w-fit">
+                          Recommended
+                        </Badge>
+                      ) : null}
+                      <CardTitle className="text-base leading-snug">
+                        {entry.display_name}
+                      </CardTitle>
+                      <p className="text-sm text-muted-foreground">{entry.maker}</p>
+                      {releasedLabel ? (
+                        <p className="text-xs text-muted-foreground">
+                          Released {releasedLabel}
+                        </p>
+                      ) : null}
+                    </div>
+                    <Badge
+                      variant="secondary"
+                      className="shrink-0 tabular-nums"
+                      title="Approximate download size"
+                    >
+                      {formatApproxDownloadGb(entry.size_bytes)}
+                    </Badge>
                   </div>
-                  <Badge
-                    variant="secondary"
-                    className="shrink-0 tabular-nums"
-                    title="Approximate download size"
+                  <CardDescription className="text-sm leading-relaxed">
+                    {entry.description}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex justify-end">
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="w-full shrink-0 sm:w-auto"
+                    disabled={isInstalled(entry.id) || downloadProgress !== null}
+                    onClick={() => {
+                      setError(null);
+                      void invoke("download_model", { catalogId: entry.id })
+                        .then(() => {
+                          setDownloadProgress(null);
+                          return refresh();
+                        })
+                        .catch((e) => {
+                          setDownloadProgress(null);
+                          setError(String(e));
+                        });
+                    }}
                   >
-                    {formatApproxDownloadGb(entry.size_bytes)}
-                  </Badge>
-                </div>
-                <CardDescription className="text-sm leading-relaxed">
-                  {entry.description}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-xs text-muted-foreground">
-                  Template:{" "}
-                  <span className="font-mono text-foreground/80">
-                    {entry.chat_template ?? "tinyllama_v1"}
-                  </span>
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="w-full shrink-0 sm:w-auto"
-                  disabled={isInstalled(entry.id) || downloadProgress !== null}
-                  onClick={() => {
-                    setError(null);
-                    void invoke("download_model", { catalogId: entry.id })
-                      .then(() => {
-                        setDownloadProgress(null);
-                        return refresh();
-                      })
-                      .catch((e) => {
-                        setDownloadProgress(null);
-                        setError(String(e));
-                      });
-                  }}
-                >
-                  <Download aria-hidden />
-                  {isInstalled(entry.id) ? "Installed" : "Download"}
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
+                    <Download aria-hidden />
+                    {isInstalled(entry.id) ? "Installed" : "Download"}
+                  </Button>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </section>
 

@@ -1,13 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { invoke } from "@/lib/tauri-api";
-import { useInferenceListeners } from "@/hooks/useInferenceListeners";
+import {
+  useInferenceListeners,
+  type InferencePhase,
+} from "@/hooks/useInferenceListeners";
 import { useModesNav } from "@/context/modes-nav-context";
 import { stripChatArtifacts } from "@/lib/inference-output";
-import {
-  nearestReplyLengthTokens,
-  REPLY_LENGTH_OPTIONS,
-} from "@/lib/mode-reply-length";
 import type {
   InstalledModel,
   ModeDefinition,
@@ -67,6 +66,7 @@ export function ModePage() {
   const [toLang, setToLang] = useState("en");
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState(false);
+  const [inferPhase, setInferPhase] = useState<InferencePhase | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
 
@@ -111,12 +111,15 @@ export function ModePage() {
 
   useInferenceListeners({
     onChunk: (s) => setOut((o) => o + s),
+    onPhase: (phase) => setInferPhase(phase),
     onDone: () => {
       setOut((o) => stripChatArtifacts(o));
+      setInferPhase(null);
       setBusy(false);
     },
     onError: (msg) => {
       setErr(msg);
+      setInferPhase(null);
       setBusy(false);
     },
   });
@@ -151,6 +154,7 @@ export function ModePage() {
     if (!draft || !inputText.trim() || !modeId) return;
     setErr(null);
     setOut("");
+    setInferPhase(null);
     setBusy(true);
     try {
       await invoke("run_mode", {
@@ -162,6 +166,7 @@ export function ModePage() {
       });
     } catch (e) {
       setErr(String(e));
+      setInferPhase(null);
       setBusy(false);
     }
   }, [draft, inputText, modeId, needsLocale, needsFromTo, locale, fromLang, toLang]);
@@ -246,8 +251,8 @@ export function ModePage() {
             <div className="min-w-0 flex-1 space-y-1">
               <CardTitle className="text-base">Mode configuration</CardTitle>
               <CardDescription>
-                Model, system prompt, message shape, reply length, and languages used
-                when you run this mode.
+                Model, system prompt, message shape, and languages used when you run
+                this mode.
               </CardDescription>
             </div>
             <ChevronDown
@@ -389,33 +394,6 @@ export function ModePage() {
                   </Select>
                 </div>
               )}
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="mode-reply-length">How long the reply can grow</Label>
-                <p className="text-xs text-muted-foreground">
-                  Local models stop after at most this many new tokens (roughly word
-                  pieces, not words). Shorter is faster and enough for fixes or short
-                  answers.
-                </p>
-                <Select
-                  value={String(nearestReplyLengthTokens(draft.max_tokens))}
-                  onValueChange={(v) =>
-                    setDraft((d) =>
-                      d ? { ...d, max_tokens: Number.parseInt(v, 10) } : d,
-                    )
-                  }
-                >
-                  <SelectTrigger id="mode-reply-length">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REPLY_LENGTH_OPTIONS.map((o) => (
-                      <SelectItem key={o.tokens} value={String(o.tokens)}>
-                        {o.label} — {o.hint}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
 
             {(needsLocale || needsFromTo) && (
@@ -594,7 +572,11 @@ export function ModePage() {
               {busy ? (
                 <>
                   <Loader2 className="animate-spin" aria-hidden />
-                  Running…
+                  {inferPhase === "prefill"
+                    ? "Encoding prompt…"
+                    : inferPhase === "generating"
+                      ? "Generating…"
+                      : "Starting…"}
                 </>
               ) : (
                 <>
@@ -612,6 +594,12 @@ export function ModePage() {
               Cancel
             </Button>
           </div>
+          {busy && inferPhase === "prefill" ? (
+            <p className="text-xs text-muted-foreground">
+              Absorbing the prompt on CPU is often the slowest part; streamed text
+              appears once this finishes.
+            </p>
+          ) : null}
           <div className="flex flex-col gap-2">
             <Label htmlFor="run-output">Output</Label>
             <Textarea

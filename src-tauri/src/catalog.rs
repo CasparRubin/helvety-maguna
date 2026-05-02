@@ -27,6 +27,9 @@ pub struct CatalogModel {
     /// the instruct GGUF layout.
     #[serde(default = "default_chat_template")]
     pub chat_template: String,
+    /// Public release of this checkpoint family (`YYYY-MM-DD`), from upstream cards; optional.
+    #[serde(default)]
+    pub release_date: Option<String>,
 }
 
 fn default_chat_template() -> String {

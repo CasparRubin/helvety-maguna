@@ -3,10 +3,11 @@ import { describe, expect, it } from "vitest";
 import type { CatalogEntry } from "@/lib/types";
 import {
   formatApproxDownloadGb,
-  sortCatalogByRecommendation,
+  formatCatalogReleaseDate,
+  sortCatalogBySizeAscending,
 } from "@/lib/catalog-order";
 
-function entry(id: string, display_name: string): CatalogEntry {
+function entry(id: string, display_name: string, size_bytes: number): CatalogEntry {
   return {
     id,
     maker: "Test",
@@ -14,7 +15,7 @@ function entry(id: string, display_name: string): CatalogEntry {
     description: "d",
     url: "https://example.com/m.gguf",
     sha256: null,
-    size_bytes: 1_000_000_000,
+    size_bytes,
     languages: ["en"],
     license_note: "MIT",
     hf_repo: "test/repo",
@@ -22,44 +23,50 @@ function entry(id: string, display_name: string): CatalogEntry {
   };
 }
 
-describe("sortCatalogByRecommendation", () => {
-  it("orders known catalog ids with best-first ranking", () => {
-    const sorted = sortCatalogByRecommendation([
-      entry("mistral-7b-instruct-v03-q4km", "Mistral"),
-      entry("qwen2.5-14b-instruct-q4km", "Qwen 14B"),
-      entry("gemma-2-9b-it-q4km", "Gemma"),
+describe("sortCatalogBySizeAscending", () => {
+  it("orders by size_bytes ascending", () => {
+    const sorted = sortCatalogBySizeAscending([
+      entry("large", "Large", 9_000_000_000),
+      entry("small", "Small", 4_000_000_000),
+      entry("mid", "Mid", 5_000_000_000),
+    ]);
+    expect(sorted.map((e) => e.id)).toEqual(["small", "mid", "large"]);
+  });
+
+  it("breaks ties by display_name", () => {
+    const sorted = sortCatalogBySizeAscending([
+      entry("b", "Zebra", 100),
+      entry("a", "Alpha", 100),
+    ]);
+    expect(sorted.map((e) => e.id)).toEqual(["a", "b"]);
+  });
+
+  it("handles same sizes as shipped catalog quants", () => {
+    const sorted = sortCatalogBySizeAscending([
+      entry("mistral-7b-instruct-v03-q4km", "Mistral", 4_372_812_000),
+      entry("deepseek-r1-distill-qwen-7b-q4km", "DeepSeek R1", 4_683_073_504),
+      entry("qwen2.5-7b-instruct-q4km", "Qwen 7B", 5_025_111_736),
     ]);
     expect(sorted.map((e) => e.id)).toEqual([
-      "qwen2.5-14b-instruct-q4km",
-      "gemma-2-9b-it-q4km",
       "mistral-7b-instruct-v03-q4km",
-    ]);
-  });
-
-  it("sorts unknown ids by display_name after known ids", () => {
-    const sorted = sortCatalogByRecommendation([
-      entry("future-model-x", "Zebra"),
-      entry("qwen2.5-14b-instruct-q4km", "Qwen"),
-      entry("future-model-a", "Alpha"),
-    ]);
-    expect(sorted[0]?.id).toBe("qwen2.5-14b-instruct-q4km");
-    expect(sorted.slice(1).map((e) => e.id)).toEqual([
-      "future-model-a",
-      "future-model-x",
-    ]);
-  });
-
-  it("orders catalog ids by the shipped recommendation list (not alphabetically)", () => {
-    const sorted = sortCatalogByRecommendation([
-      entry("mistral-7b-instruct-v03-q4km", "Mistral"),
-      entry("qwen2.5-7b-instruct-q4km", "Qwen 7B"),
-      entry("qwen2.5-14b-instruct-q4km", "Qwen 14B"),
-    ]);
-    expect(sorted.map((e) => e.id)).toEqual([
-      "qwen2.5-14b-instruct-q4km",
+      "deepseek-r1-distill-qwen-7b-q4km",
       "qwen2.5-7b-instruct-q4km",
-      "mistral-7b-instruct-v03-q4km",
     ]);
+  });
+});
+
+describe("formatCatalogReleaseDate", () => {
+  it("formats valid YYYY-MM-DD in UTC", () => {
+    expect(formatCatalogReleaseDate("2024-05-22")).toMatch(/May/i);
+    expect(formatCatalogReleaseDate("2024-05-22")).toMatch(/2024/);
+  });
+
+  it("returns null for empty or invalid input", () => {
+    expect(formatCatalogReleaseDate(null)).toBeNull();
+    expect(formatCatalogReleaseDate(undefined)).toBeNull();
+    expect(formatCatalogReleaseDate("")).toBeNull();
+    expect(formatCatalogReleaseDate("not-a-date")).toBeNull();
+    expect(formatCatalogReleaseDate("2024-5-22")).toBeNull();
   });
 });
 

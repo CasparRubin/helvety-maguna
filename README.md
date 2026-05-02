@@ -61,6 +61,16 @@ In **Model library → Installed models**, use **Open models folder** for the **
 
 `bun run check` runs **`cargo clippy` / `cargo test` with `--no-default-features`** so CI and laptops without libclang still get a strict Rust pass. That Rust configuration omits the GGUF engine, so it does not prove the `llama` stack links on your machine—for that, run **`bun run dev`** (or `cargo build` in `src-tauri` with default features) once LLVM is available.
 
+### Inference speed (CPU vs GPU, local vs API)
+
+Running a **7B** quantized model purely on **CPU** often means **tens of seconds to a minute or more** for prompt “prefill” on a laptop, plus time per token—it is normal compared to GPU servers.
+
+- **This repo enables `llama_cpp`’s `metal` feature**, so **macOS** builds use **Apple’s Metal GPU** for the heavy linear-algebra work after you rebuild (`bun run dev` / `tauri build`). Prefill and decoding are usually _dramatically_ faster than the old CPU-only linkage on a recent Mac.
+- **Windows / Linux** builds here are still **CPU-only** unless someone wires **Vulkan** or **CUDA** through `llama_cpp_sys` (different toolchains + drivers).
+- **No cloud API is required.** For **fast** answers without tuning local GPU builds, vendors’ hosted APIs remain an option—it is a latency/cost/trade-secret trade-off, not a technical necessity.
+
+Beyond hardware, smaller models (**1B–3B** GGUF), slightly coarser quantization, and shorter prompts/context all reduce wall-clock time offline.
+
 ## License
 
 MIT — see [`LICENSE`](LICENSE).

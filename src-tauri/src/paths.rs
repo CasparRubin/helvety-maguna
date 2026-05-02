@@ -93,6 +93,7 @@ mod tests {
         );
     }
 
+    #[cfg(windows)]
     #[test]
     fn install_adjacent_models_dir_windows_style() {
         let exe = Path::new(r"C:\Program Files\Maguna\maguna.exe");
