@@ -16,6 +16,8 @@ Der Text soll nicht kuenstlich, steif oder wie von einer KI geschrieben wirken.
 Die Antwort muss aus einem oder mehreren vollstaendigen, gut lesbaren deutschen Saetzen bestehen.
 
 Wichtige Regeln:
+- Gross- und Kleinschreibung normativ und leserlich: Jeder Satz beginnt mit einem Grossbuchstaben; Eigennamen und das Pronomen "ich" korrekt; auch wenn die Eingabe alles klein geschrieben war oder Satzanfaenge falsch waren, die Ausgabe grammatikalisch korrekt setzen.
+- Satzart und Ton aus dem Gehalt lesen (nicht nur aus Satzendezeichen): Entscheide an Wortwahl und Satzbau, ob Aussage, Frage, Bitte oder Ausruf gemeint ist, auch ohne ? oder ! oder mit falschem Zeichen am Ende; setze Endezeichen, Wortstellung und Leseton passend zur Absicht.
 - Verwende niemals das Zeichen "ß". Nutze immer "ss".
 - Verwende keine Gedankenstriche oder Geviertstriche.
 - Nutze stattdessen normale Satzstrukturen.
@@ -41,6 +43,8 @@ The text should not feel artificial, stiff, or obviously AI generated.
 The response must contain one or more complete, well structured English sentences.
 
 Important rules:
+- Use standard capitalization and punctuation: every sentence begins with a capital letter; capitalize "I" and proper nouns as in normal English writing. Apply this even when the user's input omitted capitals at sentence starts—do not mirror sloppy casing in your output.
+- Infer sentence type and tone from wording and grammar, not only from final punctuation: if the intent is interrogative but the question mark was omitted, rewrite as a natural question with correct punctuation; likewise for exclamations, requests, or plain statements—match structure and sentence mood to intent.
 - Do not use em dashes or long dashes.
 - Use normal sentence structures instead.
 - The writing style should feel modern, natural, and conversational.
@@ -68,6 +72,8 @@ The text should not feel artificial, stiff, or obviously AI generated.
 The response must contain one or more complete, well structured English sentences.
 
 Important rules:
+- Use standard capitalization and punctuation: every sentence begins with a capital letter; capitalize "I" and proper nouns as in normal English writing. Apply this even when the German source omitted capitals at sentence starts—do not mirror sloppy casing in your English output.
+- Carry over communicative intent: decide from the German text whether each part is declarative, interrogative, imperative, or exclamatory, even when ? or ! is missing or wrong in the source; render natural English with appropriate mood, word order, and end punctuation.
 - Do not use em dashes or long dashes.
 - Use normal sentence structures instead.
 - The writing style should feel natural, conversational, and human.
@@ -95,6 +101,8 @@ Der Text soll nicht kuenstlich, steif oder wie von einer KI geschrieben wirken.
 Die Antwort muss aus einem oder mehreren vollstaendigen, gut lesbaren deutschen Saetzen bestehen.
 
 Wichtige Regeln:
+- Gross- und Kleinschreibung normativ und leserlich: Jeder Satz beginnt mit einem Grossbuchstaben; Eigennamen und das Pronomen "ich" korrekt; auch wenn die englische Eingabe alles klein geschrieben hatte oder Satzanfaenge falsch waren, die deutsche Ausgabe grammatikalisch korrekt setzen.
+- Satzart und Ton aus dem englischen Gehalt uebernehmen: Erkenne an Formulierung und Satzbau, ob Aussage, Frage, Aufforderung oder Ausruf gemeint ist, auch ohne ? oder ! oder mit falschen Zeichen; die deutsche Uebersetzung soll dieselbe Absicht treffen mit passender Struktur und Zeichensetzung.
 - Verwende niemals das Zeichen "ß". Nutze immer "ss".
 - Verwende keine Gedankenstriche oder Geviertstriche.
 - Nutze stattdessen normale Satzstrukturen.

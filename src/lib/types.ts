@@ -42,7 +42,7 @@ export type ModeDefinition = {
   /** Empty for custom modes is fine; Maguna authors built-in defaults only. */
   system_prompt: string;
   prompt_layout: PromptLayout;
-  /** Kept for saved modes / validation; generation length is inferred from your input at run time. */
+  /** Persisted for schema validation (Rust clamps 64–8192); the inference path derives the generation budget from the formatted user-turn string at run time, not from this value. */
   max_tokens: number;
   builtin: boolean;
 };

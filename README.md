@@ -29,8 +29,9 @@ That starts the full app: **Model library** (catalog, download, import, default 
 ### Using the app
 
 - **Model library:** install models from the catalog or import a GGUF; set the **default** for modes that do not override it.
-- **Each mode:** optional per-mode model; **Mode configuration** is the same for every mode (name, user message shape, system prompt, **Language in** / **Language out**, model). Built-in **Correction DE** / **Correction EN** use the same shape as translation with **de–de** and **en–en** defaults; **Run** uses your installed weights only.
-- **Appearance:** the sidebar has **Light** and **Dark**; if no saved preference exists, Maguna initializes from your system theme. Your explicit choice is persisted (same `localStorage` API as in the Tauri webview).
+- **Each mode:** optional per-mode model; **Mode configuration** is the same for every mode (name, user message shape, system prompt, **Language in** / **Language out**, model). Built-in **Correction DE** / **Correction EN** use the same prompt layout as translation with **German→German** and **English→English** defaults respectively; **Run** uses your installed weights only (no cloud inference in the app itself).
+- **Input & output:** the run textareas start compact (~two lines) and grow with content. Use the **copy** control in the corner of each field to copy the full input or output. **Enter** submits a run (**Shift+Enter** adds a newline). Successful runs are stored in an **Archive** section on that mode’s page (per-mode storage in `localStorage`, newest first; you can remove rows or clear the list).
+- **Appearance:** the sidebar has **Light** and **Dark**; if no saved preference exists, Maguna initializes from your system theme. Your explicit choice is persisted (same `localStorage` key as the splash script in `index.html`; see `THEME_STORAGE_KEY` in [`src/context/theme-context.tsx`](src/context/theme-context.tsx)).
 
 ### Where models are stored
 
@@ -54,6 +55,8 @@ In **Model library → Installed models**, use **Open models folder** for the **
 | `bun run dev:shell`     | Same UI, Rust built with `--no-default-features` (catalog/download/import work; **Run** in a mode fails until you use a full engine build)    |
 | `bun run dev:vite`      | Vite dev server only (no Tauri; `invoke` / `listen` are not available)                                                                        |
 | `bun run build`         | Production frontend only (`tsc` + Vite → `dist/`; Tauri `beforeBuildCommand` uses this)                                                       |
+| `bun run test`          | Vitest (unit + component tests; component tests opt into `jsdom` per file)                                                                    |
+| `bun run lint`          | ESLint on the TypeScript/React tree                                                                                                           |
 | `bun run tauri build`   | Full desktop installer/bundle (frontend build + Rust with default features)                                                                   |
 | `bun run build:windows` | Windows: runs `scripts/build-windows.ps1` then `tauri build` (same LLVM setup as `dev:windows`)                                               |
 | `bun run check`         | Format, lint, Vitest, frontend `build`, then Rust clippy + tests with **`--no-default-features`** (matches CI; fast compile without libclang) |

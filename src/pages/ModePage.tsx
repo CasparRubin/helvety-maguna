@@ -1,19 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { invoke } from "@/lib/tauri-api";
 import {
   useInferenceListeners,
   type InferencePhase,
 } from "@/hooks/useInferenceListeners";
+import { useAutosizeTextarea } from "@/hooks/use-autosize-textarea";
 import { useModesNav } from "@/context/modes-nav-context";
 import { stripChatArtifacts } from "@/lib/inference-output";
+import {
+  clearModeRunArchive,
+  loadModeRunArchive,
+  type ModeRunArchiveEntry,
+  removeModeRunArchiveStorage,
+  saveModeRunArchive,
+  trimArchiveToMax,
+} from "@/lib/mode-run-archive";
 import { compactModelDisplayName } from "@/lib/model-display";
-import type {
-  InstalledModel,
-  ModeDefinition,
-  ModeModelBinding,
-  PromptLayout,
-} from "@/lib/types";
+import type { InstalledModel, ModeDefinition, ModeModelBinding } from "@/lib/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,7 +37,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { CopyTextControl } from "@/components/copy-text-control";
 import { cn } from "@/lib/utils";
 import { ChevronDown, Loader2, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 
@@ -56,7 +62,7 @@ function newCustomMode(): ModeDefinition {
     id: `mode-${crypto.randomUUID()}`,
     name: "New mode",
     system_prompt: "",
-    prompt_layout: "plain",
+    prompt_layout: "translate",
     max_tokens: 768,
     builtin: false,
   };
@@ -81,6 +87,16 @@ export function ModePage() {
   const [cancelling, setCancelling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [archive, setArchive] = useState<ModeRunArchiveEntry[]>([]);
+
+  const lastRunInputRef = useRef("");
+  const streamOutRef = useRef("");
+  const modeIdRef = useRef(modeId ?? "");
+  const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const outputTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useAutosizeTextarea(inputTextareaRef, inputText);
+  useAutosizeTextarea(outputTextareaRef, out);
 
   const selectedMode = useMemo(
     () => (modeId ? modes.find((m) => m.id === modeId) : undefined),
@@ -115,6 +131,15 @@ export function ModePage() {
   }, [refreshBinding]);
 
   useEffect(() => {
+    modeIdRef.current = modeId ?? "";
+  }, [modeId]);
+
+  useEffect(() => {
+    if (!modeId) return;
+    setArchive(loadModeRunArchive(modeId));
+  }, [modeId]);
+
+  useEffect(() => {
     setDraft(selectedMode ? { ...selectedMode } : null);
     setInputText("");
     setOut("");
@@ -141,14 +166,32 @@ export function ModePage() {
   }, [selectedMode]);
 
   useInferenceListeners({
-    onChunk: (s) => setOut((o) => o + s),
+    onChunk: (s) => {
+      streamOutRef.current += s;
+      setOut((o) => o + s);
+    },
     onPhase: (phase) => setInferPhase(phase),
     onDone: () => {
+      const mid = modeIdRef.current;
+      const finalOut = stripChatArtifacts(streamOutRef.current);
+      if (mid) {
+        const entry: ModeRunArchiveEntry = {
+          id: crypto.randomUUID(),
+          createdAt: Date.now(),
+          input: lastRunInputRef.current,
+          output: finalOut,
+        };
+        setArchive((prev) => {
+          const next = trimArchiveToMax([entry, ...prev]);
+          saveModeRunArchive(mid, next);
+          return next;
+        });
+      }
       if (runStartedAt !== null) {
         setRunDurationMs(Math.max(0, Date.now() - runStartedAt));
       }
       setRunStartedAt(null);
-      setOut((o) => stripChatArtifacts(o));
+      setOut(() => finalOut);
       setInferPhase(null);
       setCancelling(false);
       setBusy(false);
@@ -172,7 +215,7 @@ export function ModePage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [busy]);
 
-  const layout: PromptLayout = draft?.prompt_layout ?? "plain";
+  const layout = draft?.prompt_layout ?? "translate";
 
   const saveDraftToList = useCallback(async () => {
     if (!draft || !modeId) return;
@@ -188,6 +231,8 @@ export function ModePage() {
 
   const run = useCallback(async () => {
     if (!draft || !inputText.trim() || !modeId) return;
+    lastRunInputRef.current = inputText.trim();
+    streamOutRef.current = "";
     setErr(null);
     setOut("");
     setInferPhase(null);
@@ -236,6 +281,29 @@ export function ModePage() {
     }
   }, [modeId, refreshBinding]);
 
+  const deleteArchiveEntry = useCallback(
+    (entryId: string) => {
+      if (!modeId) return;
+      setArchive((prev) => {
+        const next = prev.filter((e) => e.id !== entryId);
+        saveModeRunArchive(modeId, next);
+        return next;
+      });
+    },
+    [modeId],
+  );
+
+  const clearEntireArchive = useCallback(() => {
+    if (!modeId) return;
+    if (
+      !window.confirm("Delete all archived runs for this mode? This cannot be undone.")
+    ) {
+      return;
+    }
+    clearModeRunArchive(modeId);
+    setArchive([]);
+  }, [modeId]);
+
   if (!modeId) {
     return null;
   }
@@ -269,8 +337,8 @@ export function ModePage() {
         <h2 className="text-2xl font-semibold tracking-tight">{draft.name}</h2>
         <p className="text-sm text-muted-foreground">
           Use input and output below. Open{" "}
-          <strong className="font-medium">Mode configuration</strong> for name, user
-          message shape, system prompt, languages in/out, and model.
+          <strong className="font-medium">Mode configuration</strong> for name, system
+          prompt, languages in/out, and model.
         </p>
       </header>
 
@@ -291,8 +359,8 @@ export function ModePage() {
             <div className="min-w-0 flex-1 space-y-1">
               <CardTitle className="text-base">Mode configuration</CardTitle>
               <CardDescription>
-                Name, mode (user message shape), system prompt, input and output
-                language, then which installed model runs for this page.
+                Name, system prompt, input and output language, then which installed
+                model runs for this page.
               </CardDescription>
             </div>
             <ChevronDown
@@ -318,42 +386,6 @@ export function ModePage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="mode-layout">Mode</Label>
-                <Select
-                  value={draft.prompt_layout}
-                  disabled={draft.builtin}
-                  onValueChange={(v) =>
-                    setDraft((d) =>
-                      d ? { ...d, prompt_layout: v as PromptLayout } : d,
-                    )
-                  }
-                >
-                  <SelectTrigger id="mode-layout">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="plain">
-                      Plain — only your typed text is sent as the user message
-                    </SelectItem>
-                    <SelectItem value="locale">
-                      Locale — structured turn (language in, text, language out); kept
-                      for older custom modes
-                    </SelectItem>
-                    <SelectItem value="translate">
-                      Translate — structured turn (language in, text, language out);
-                      built-in corrections use this with the same language twice (DE–DE,
-                      EN–EN) by default
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-                {draft.builtin ? (
-                  <p className="text-xs text-muted-foreground">
-                    Built-in modes use a fixed mode; <strong>Reset to default</strong>{" "}
-                    restores the factory choice.
-                  </p>
-                ) : null}
-              </div>
-              <div className="flex flex-col gap-2">
                 <Label htmlFor="mode-system">System prompt</Label>
                 <Textarea
                   id="mode-system"
@@ -362,7 +394,7 @@ export function ModePage() {
                     setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d))
                   }
                   placeholder="Optional persistent instruction (empty is fine for custom modes)."
-                  className="min-h-[120px] font-mono text-sm"
+                  className="min-h-[120px] max-h-[95vh] resize-y overflow-y-auto font-mono text-sm"
                 />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -397,12 +429,6 @@ export function ModePage() {
                   </Select>
                 </div>
               </div>
-              {layout === "plain" ? (
-                <p className="text-xs text-muted-foreground">
-                  With <strong>Plain</strong> mode, language choices are not included in
-                  the user turn; they stay here so every mode uses the same fields.
-                </p>
-              ) : null}
             </div>
 
             <Separator />
@@ -476,7 +502,7 @@ export function ModePage() {
 
             <Separator />
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
               <Button type="button" onClick={() => void saveDraftToList()}>
                 Save mode
               </Button>
@@ -509,6 +535,7 @@ export function ModePage() {
                       setErr(null);
                       try {
                         await invoke("delete_mode", { modeId: draft.id });
+                        removeModeRunArchiveStorage(draft.id);
                         await refreshModes();
                         navigate(DEFAULT_MODE_ROUTE, { replace: true });
                       } catch (e) {
@@ -558,19 +585,26 @@ export function ModePage() {
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="run-input">Input</Label>
-            <Textarea
-              id="run-input"
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  void run();
-                }
-              }}
-              className="min-h-[160px]"
-              placeholder="Text to process…"
-            />
+            <div className="relative">
+              <CopyTextControl
+                text={inputText}
+                className="absolute right-2 top-2 z-10"
+              />
+              <Textarea
+                ref={inputTextareaRef}
+                id="run-input"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void run();
+                  }
+                }}
+                className="min-h-[3.5rem] resize-none overflow-y-hidden px-3 pb-2 pr-10 pt-9"
+                placeholder="Text to process…"
+              />
+            </div>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button
@@ -638,14 +672,96 @@ export function ModePage() {
           ) : null}
           <div className="flex flex-col gap-2">
             <Label htmlFor="run-output">Output</Label>
-            <Textarea
-              id="run-output"
-              value={out}
-              readOnly
-              aria-live="polite"
-              className="min-h-[180px] font-mono text-sm"
-              placeholder="Reply will appear here..."
-            />
+            <div className="relative">
+              <CopyTextControl text={out} className="absolute right-2 top-2 z-10" />
+              <Textarea
+                ref={outputTextareaRef}
+                id="run-output"
+                value={out}
+                readOnly
+                aria-live="polite"
+                className="min-h-[3.5rem] resize-none overflow-y-hidden px-3 pb-2 pr-10 pt-9 font-mono text-sm"
+                placeholder="Reply will appear here..."
+              />
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-medium">Archive</h3>
+              {archive.length > 0 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={clearEntireArchive}
+                >
+                  Clear archive
+                </Button>
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Successful runs are saved here (newest first). Delete individual rows or
+              clear everything.
+            </p>
+            {archive.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No archived runs yet.</p>
+            ) : (
+              <ScrollArea className="h-[min(50vh,420px)] rounded-md border">
+                <ul className="divide-y p-2">
+                  {archive.map((row) => (
+                    <li key={row.id} className="flex gap-2 py-3 first:pt-2 last:pb-2">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          {new Date(row.createdAt).toLocaleString()}
+                        </p>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Input
+                          </p>
+                          <div className="relative">
+                            <CopyTextControl
+                              text={row.input}
+                              className="absolute right-1 top-1 z-10"
+                            />
+                            <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 pt-8 pr-10 font-mono text-xs">
+                              {row.input}
+                            </pre>
+                          </div>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            Output
+                          </p>
+                          <div className="relative">
+                            <CopyTextControl
+                              text={row.output}
+                              className="absolute right-1 top-1 z-10"
+                            />
+                            <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 pt-8 pr-10 font-mono text-xs">
+                              {row.output}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                        aria-label="Delete archived run"
+                        onClick={() => deleteArchiveEntry(row.id)}
+                      >
+                        <Trash2 className="size-4" aria-hidden />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </ScrollArea>
+            )}
           </div>
         </CardContent>
       </Card>
