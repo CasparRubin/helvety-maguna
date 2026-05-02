@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke, listen } from "@/lib/tauri-api";
 import { Trash2, Download, HardDrive, FolderInput } from "lucide-react";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -15,6 +16,12 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import {
+  formatApproxDownloadGb,
+  sortCatalogByRecommendation,
+} from "@/lib/catalog-order";
+import { cn } from "@/lib/utils";
 import type { CatalogEntry, InstalledModel } from "@/lib/types";
 
 export function ModelsPage() {
@@ -72,6 +79,8 @@ export function ModelsPage() {
 
   const isInstalled = (id: string) => installed.some((m) => m.id === id);
 
+  const catalogSorted = useMemo(() => sortCatalogByRecommendation(catalog), [catalog]);
+
   const pct =
     downloadProgress && downloadProgress.total
       ? Math.min(
@@ -89,22 +98,24 @@ export function ModelsPage() {
         <p className="text-sm text-muted-foreground">
           Curated GGUF weights for local inference. Each entry records the right chat
           template for the model family (TinyLlama, Llama 3.x, Mistral, Qwen, Gemma,
-          Moonshot-style, DeepSeek R1 distill, etc.). What you run the model on—tasks,
-          tone, languages—is defined in Modes, not here. Manual imports default to
-          TinyLlama-style framing unless the saved id matches a known family.
+          Moonshot-style, DeepSeek R1 distill, etc.). Use{" "}
+          <strong>Set as default</strong> so modes without their own pick use this GGUF.
+          You can still assign a different installed model on each mode&apos;s page.
+          Manual imports default to TinyLlama-style framing unless the saved id matches
+          a known family.
         </p>
       </header>
 
       {error ? (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       ) : null}
 
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <FolderInput className="size-4" aria-hidden />
+            <FolderInput className="size-4 shrink-0" aria-hidden />
             Import GGUF
           </CardTitle>
           <CardDescription>
@@ -114,7 +125,7 @@ export function ModelsPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="grid flex-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="import-path">File path</Label>
               <Input
                 id="import-path"
@@ -124,7 +135,7 @@ export function ModelsPage() {
                 autoComplete="off"
               />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label htmlFor="import-name">Display name</Label>
               <Input
                 id="import-name"
@@ -135,7 +146,6 @@ export function ModelsPage() {
           </div>
           <Button
             type="button"
-            variant="secondary"
             onClick={() => {
               setError(null);
               void invoke("import_gguf", {
@@ -167,7 +177,7 @@ export function ModelsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Progress value={pct} className="h-2" />
+            <Progress value={pct} />
           </CardContent>
         </Card>
       ) : null}
@@ -175,25 +185,26 @@ export function ModelsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
-            <HardDrive className="size-4" aria-hidden />
+            <HardDrive className="size-4 shrink-0" aria-hidden />
             Installed models
           </CardTitle>
           <CardDescription>
-            Active model is used for spelling and translation.
+            The <strong>default</strong> model is used by any mode that has not chosen
+            its own installed GGUF in the sidebar.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
+        <CardContent className="flex flex-col gap-2">
           {installed.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No models installed yet. Download one from the catalog below.
             </p>
           ) : (
             <ScrollArea className="h-48 pr-3">
-              <ul className="space-y-2">
+              <ul className="flex flex-col gap-2">
                 {installed.map((m) => (
                   <li
                     key={m.id}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3"
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3"
                   >
                     <div>
                       <p className="font-medium">{m.display_name}</p>
@@ -205,6 +216,7 @@ export function ModelsPage() {
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button
+                        type="button"
                         size="sm"
                         variant={activeId === m.id ? "secondary" : "outline"}
                         onClick={() => {
@@ -213,9 +225,10 @@ export function ModelsPage() {
                             .catch((e) => setError(String(e)));
                         }}
                       >
-                        {activeId === m.id ? "Active" : "Set active"}
+                        {activeId === m.id ? "Default" : "Set as default"}
                       </Button>
                       <Button
+                        type="button"
                         size="sm"
                         variant="destructive"
                         onClick={() => {
@@ -227,7 +240,7 @@ export function ModelsPage() {
                             .catch((e) => setError(String(e)));
                         }}
                       >
-                        <Trash2 className="size-4" aria-hidden />
+                        <Trash2 aria-hidden />
                         Remove
                       </Button>
                     </div>
@@ -242,25 +255,55 @@ export function ModelsPage() {
       <Separator />
 
       <section aria-labelledby="catalog-heading">
-        <h3 id="catalog-heading" className="mb-3 text-lg font-medium">
+        <h3 id="catalog-heading" className="mb-1 text-lg font-medium">
           Catalog
         </h3>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Ordered for quality (best picks first). Approximate download size is shown on
+          each card.
+        </p>
         <div className="grid gap-4 md:grid-cols-2">
-          {catalog.map((entry) => (
-            <Card key={entry.id}>
-              <CardHeader>
-                <CardTitle className="text-base">{entry.display_name}</CardTitle>
-                <CardDescription className="line-clamp-3">
+          {catalogSorted.map((entry, index) => (
+            <Card
+              key={entry.id}
+              className={cn(
+                index === 0 &&
+                  "border-primary/50 shadow-sm ring-1 ring-ring/60 ring-offset-2 ring-offset-background",
+              )}
+            >
+              <CardHeader className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    {index === 0 ? (
+                      <Badge className="text-xs font-semibold uppercase tracking-wide">
+                        Top pick
+                      </Badge>
+                    ) : null}
+                    <CardTitle className="text-base leading-snug">
+                      {entry.display_name}
+                    </CardTitle>
+                    <p className="text-sm font-medium text-muted-foreground">
+                      {entry.maker}
+                    </p>
+                  </div>
+                  <Badge
+                    variant="secondary"
+                    className="min-h-10 min-w-[6.25rem] text-base tabular-nums tracking-tight"
+                    title="Approximate download size"
+                  >
+                    {formatApproxDownloadGb(entry.size_bytes)}
+                  </Badge>
+                </div>
+                <CardDescription className="leading-relaxed">
                   {entry.description}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col gap-2 text-sm text-muted-foreground">
-                <p>~{(entry.size_bytes / 1_000_000_000).toFixed(1)} GB</p>
-                <p>Languages: {entry.languages.join(", ")}</p>
+              <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
                 <p className="text-xs">
                   Chat template: {entry.chat_template ?? "tinyllama_v1"}
                 </p>
                 <Button
+                  type="button"
                   disabled={isInstalled(entry.id)}
                   onClick={() => {
                     setError(null);
@@ -275,7 +318,7 @@ export function ModelsPage() {
                       });
                   }}
                 >
-                  <Download className="size-4" aria-hidden />
+                  <Download aria-hidden />
                   {isInstalled(entry.id) ? "Installed" : "Download"}
                 </Button>
               </CardContent>

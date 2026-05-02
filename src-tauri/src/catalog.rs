@@ -12,6 +12,8 @@ pub struct CatalogFile {
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 pub struct CatalogModel {
     pub id: String,
+    /// Company or team that released the base model weights.
+    pub maker: String,
     pub display_name: String,
     pub description: String,
     pub url: String,

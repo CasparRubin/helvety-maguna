@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 
 import { invoke } from "@/lib/tauri-api";
-import { cn } from "@/lib/utils";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 type InferenceBackendInfo = {
   llama_backend_compiled: boolean;
@@ -21,17 +21,14 @@ export function InferenceBackendBanner() {
   }
 
   return (
-    <div
-      role="alert"
-      className={cn(
-        "rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-foreground",
-      )}
-    >
-      <div className="flex gap-2 font-medium text-amber-950 dark:text-amber-100">
-        <AlertTriangle className="mt-0.5 size-4 shrink-0" aria-hidden />
-        On-device inference is not available in this build
+    <Alert>
+      <AlertTriangle />
+      <div>
+        <AlertTitle>On-device inference is not available in this build</AlertTitle>
+        <AlertDescription className="mt-2 text-muted-foreground">
+          {info.dev_hint}
+        </AlertDescription>
       </div>
-      <p className="mt-2 text-muted-foreground">{info.dev_hint}</p>
-    </div>
+    </Alert>
   );
 }

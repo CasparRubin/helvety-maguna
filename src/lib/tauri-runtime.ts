@@ -11,4 +11,4 @@ export function isTauri(): boolean {
 }
 
 export const TAURI_REQUIRED_HINT =
-  "Run the desktop app with: npm run dev (uses Tauri). Do not open the Vite URL in Chrome/Edge alone.";
+  "Run the full app with: bun run dev (Tauri + Vite). The Vite-only URL has no Tauri bridge — do not use it for IPC or inference.";

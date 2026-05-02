@@ -14,4 +14,12 @@ describe("stripChatArtifacts", () => {
   it("truncates before [/INST] echo", () => {
     expect(stripChatArtifacts("done[/INST]")).toBe("done");
   });
+
+  it("truncates before <|eot_id|>", () => {
+    expect(stripChatArtifacts("Answer<|eot_id|>")).toBe("Answer");
+  });
+
+  it("truncates at earliest marker and trims trailing space", () => {
+    expect(stripChatArtifacts("ok <|assistant|>")).toBe("ok");
+  });
 });

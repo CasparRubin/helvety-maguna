@@ -1,7 +1,7 @@
 [package]
 name = "maguna"
 version = "0.1.0"
-description = "Maguna — local GGUF harness with user-defined modes"
+description = "Maguna — local GGUF desktop app with per-mode prompts and model selection"
 authors = ["Helvety"]
 edition = "2021"
 

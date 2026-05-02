@@ -11,7 +11,7 @@ $candidates = @(
 $bin = $candidates | Select-Object -First 1
 
 if (-not $bin) {
-    Write-Host "libclang.dll not found. Install LLVM (winget install LLVM.LLVM) or set LIBCLANG_PATH. See docs/BUILD.md" -ForegroundColor Red
+    Write-Host "libclang.dll not found. Install LLVM (winget install LLVM.LLVM) or set LIBCLANG_PATH. See README.md" -ForegroundColor Red
     exit 1
 }
 
@@ -26,4 +26,4 @@ $env:PATH = "$bin;$env:PATH"
 
 Write-Host "LIBCLANG_PATH=$($env:LIBCLANG_PATH)" -ForegroundColor Green
 if ($env:NM_PATH) { Write-Host "NM_PATH=$($env:NM_PATH)" -ForegroundColor Green }
-npx tauri build --features llama
+bunx tauri build --features llama

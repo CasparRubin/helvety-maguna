@@ -13,6 +13,13 @@ use crate::state::AppState;
 use crate::storage::{self, InstalledModelDto};
 
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModeModelBinding {
+    pub effective_model_id: Option<String>,
+    pub override_model_id: Option<String>,
+}
+
+#[derive(serde::Serialize)]
 pub struct InferenceBackendInfo {
     /// True when this binary was built with `--features llama` (requires LLVM at compile time).
     pub llama_backend_compiled: bool,
@@ -29,7 +36,7 @@ pub fn inference_backend_info() -> InferenceBackendInfo {
     } else {
         InferenceBackendInfo {
             llama_backend_compiled: false,
-            dev_hint: "Modes (local inference) need llama.cpp. On Windows: winget install LLVM.LLVM, then npm run dev:llama:win (or set LIBCLANG_PATH to LLVM\\bin and npm run dev:llama). See docs/BUILD.md.".into(),
+            dev_hint: "Modes (local inference) need llama.cpp. On Windows: winget install LLVM.LLVM, then bun run dev:llama:win (or set LIBCLANG_PATH to LLVM\\bin and bun run dev:llama). See README.md (Building with local inference).".into(),
         }
     }
 }
@@ -49,6 +56,72 @@ pub fn list_installed_models(app: AppHandle) -> Result<Vec<InstalledModelDto>, S
 #[tauri::command]
 pub fn get_active_model_id(state: State<'_, AppState>) -> Result<Option<String>, String> {
     Ok(state.get_active_id())
+}
+
+#[tauri::command]
+pub fn get_mode_model_binding(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mode_id: String,
+) -> Result<ModeModelBinding, String> {
+    let list = modes::load_modes(&app).map_err(|e| e.to_string())?;
+    if !list.iter().any(|m| m.id == mode_id) {
+        return Err(format!("Unknown mode: {mode_id}"));
+    }
+    Ok(ModeModelBinding {
+        effective_model_id: state.resolve_model_for_mode(&mode_id),
+        override_model_id: state.mode_model_override(&mode_id),
+    })
+}
+
+#[tauri::command]
+pub async fn set_mode_model_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mode_id: String,
+    model_id: String,
+) -> Result<(), String> {
+    let list = modes::load_modes(&app).map_err(|e| e.to_string())?;
+    if !list.iter().any(|m| m.id == mode_id) {
+        return Err(format!("Unknown mode: {mode_id}"));
+    }
+    let _ = storage::resolve_gguf_path(&app, &model_id).map_err(|e| e.to_string())?;
+    state
+        .set_mode_model_override(&app, mode_id, model_id.clone())
+        .map_err(|e| e.to_string())?;
+    #[cfg(feature = "llama")]
+    {
+        state.unload_model();
+        state
+            .load_model_for_id(&app, &model_id)
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn clear_mode_model_override(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mode_id: String,
+) -> Result<(), String> {
+    let list = modes::load_modes(&app).map_err(|e| e.to_string())?;
+    if !list.iter().any(|m| m.id == mode_id) {
+        return Err(format!("Unknown mode: {mode_id}"));
+    }
+    state
+        .clear_mode_model_override(&app, &mode_id)
+        .map_err(|e| e.to_string())?;
+    #[cfg(feature = "llama")]
+    {
+        state.unload_model();
+        if let Some(id) = state.resolve_model_for_mode(&mode_id) {
+            state
+                .load_model_for_id(&app, &id)
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -77,10 +150,15 @@ pub async fn delete_model(
     state: State<'_, AppState>,
     model_id: String,
 ) -> Result<(), String> {
-    if state.get_active_id().as_deref() == Some(model_id.as_str()) {
-        state.unload_model();
-        state.set_active_id(&app, None).map_err(|e| e.to_string())?;
+    #[cfg(feature = "llama")]
+    {
+        if state.loaded_model_id().as_deref() == Some(model_id.as_str()) {
+            state.unload_model();
+        }
     }
+    state
+        .remove_model_from_all_bindings(&app, &model_id)
+        .map_err(|e| e.to_string())?;
     storage::delete_installed(&app, &model_id).map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -264,6 +342,22 @@ pub async fn run_mode(
             .as_deref()
             .ok_or_else(|| "Target language is required for this mode.".to_string())?;
         assert_en_de_translate(f, t)?;
+    }
+
+    let effective_model = state.resolve_model_for_mode(&mode_id).ok_or_else(|| {
+        "No model selected for this mode. Set a default in Model library or pick an installed GGUF on this mode's page.".to_string()
+    })?;
+    let _ = storage::resolve_gguf_path(&app, &effective_model).map_err(|e| e.to_string())?;
+
+    #[cfg(feature = "llama")]
+    {
+        state.reset_cancel();
+        if state.loaded_model_id().as_deref() != Some(effective_model.as_str()) {
+            state.unload_model();
+            state
+                .load_model_for_id(&app, &effective_model)
+                .map_err(|e| e.to_string())?;
+        }
     }
 
     let user = modes::build_user_message(

@@ -11,9 +11,9 @@ pub enum MagunaError {
     Http(String),
     #[error("Catalog error: {0}")]
     Catalog(String),
-    #[error("Inference backend was not compiled in. Rebuild with `--features llama` and LLVM (libclang) installed.")]
+    #[error("Inference backend was not compiled in. Build with the `llama` feature (e.g. `bun run dev:llama`) and LLVM/libclang; see README.")]
     NoInferenceBackend,
-    #[error("No model is loaded. Install a model and set it active in Model library.")]
+    #[error("No model is loaded. Install a GGUF, set a default in Model library, or choose an installed model on the mode page.")]
     NoModelLoaded,
     #[error("Model not found: {0}")]
     ModelNotFound(String),

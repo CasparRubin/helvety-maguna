@@ -33,7 +33,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ["src/components/ui/**/*.{ts,tsx}"],
+    files: ["src/components/ui/**/*.{ts,tsx}", "src/context/**/*.{ts,tsx}"],
     rules: {
       "react-refresh/only-export-components": "off",
     },

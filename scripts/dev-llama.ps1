@@ -21,9 +21,9 @@ if (-not $bin) {
     Write-Host "Or install from https://github.com/llvm/llvm-project/releases" -ForegroundColor Yellow
     Write-Host "Then set the folder that contains libclang.dll, e.g.:" -ForegroundColor Yellow
     Write-Host '  $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"' -ForegroundColor Cyan
-    Write-Host "  npm run dev:llama" -ForegroundColor Cyan
+    Write-Host "  bun run dev:llama" -ForegroundColor Cyan
     Write-Host ""
-    Write-Host "See docs/BUILD.md" -ForegroundColor DarkGray
+    Write-Host "See README.md (Building with local inference)" -ForegroundColor DarkGray
     exit 1
 }
 
@@ -39,4 +39,4 @@ $env:PATH = "$bin;$env:PATH"
 
 Write-Host "LIBCLANG_PATH=$($env:LIBCLANG_PATH)" -ForegroundColor Green
 if ($env:NM_PATH) { Write-Host "NM_PATH=$($env:NM_PATH)" -ForegroundColor Green }
-npx tauri dev --features llama
+bunx tauri dev --features llama
