@@ -22,8 +22,9 @@ pub struct CatalogModel {
     pub languages: Vec<String>,
     pub license_note: String,
     pub hf_repo: String,
-    /// Chat template key: `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`, `qwen2_instruct`,
-    /// `gemma2_it`, `moonshot_instruct` — must match instruct format of the GGUF.
+    /// Chat framing key (`chat_template`): `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`,
+    /// `qwen2_instruct`, `gemma2_it`, `moonshot_instruct` (`kimi_k2`/`kimi` aliases), etc.—must match
+    /// the instruct GGUF layout.
     #[serde(default = "default_chat_template")]
     pub chat_template: String,
 }

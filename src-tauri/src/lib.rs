@@ -1,5 +1,4 @@
 mod catalog;
-#[cfg(feature = "llama")]
 mod chat_template;
 mod commands;
 mod download;
@@ -31,12 +30,18 @@ pub fn run() {
             let handle = app.handle().clone();
             app.manage(AppState::new(&handle));
 
+            let state = app.state::<AppState>();
+            let _ = commands::sync_default_model_from_installs(&handle, &state, None);
+
             #[cfg(feature = "llama")]
             {
-                let state = app.state::<AppState>();
                 if let Some(id) = state.get_active_id() {
                     if state.load_model_for_id(&handle, &id).is_err() {
                         let _ = state.set_active_id(&handle, None);
+                        let _ = commands::sync_default_model_from_installs(&handle, &state, None);
+                        if let Some(id2) = state.get_active_id() {
+                            let _ = state.load_model_for_id(&handle, &id2);
+                        }
                     }
                 }
             }
@@ -44,12 +49,16 @@ pub fn run() {
             if let Ok(root) = paths::maguna_root(&handle) {
                 let _ = std::fs::create_dir_all(&root);
             }
+            if let Ok(models) = paths::models_dir(&handle) {
+                let _ = std::fs::create_dir_all(&models);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_catalog,
             commands::list_installed_models,
             commands::get_active_model_id,
+            commands::open_models_install_folder,
             commands::get_mode_model_binding,
             commands::set_mode_model_override,
             commands::clear_mode_model_override,

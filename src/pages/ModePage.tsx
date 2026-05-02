@@ -4,7 +4,16 @@ import { invoke } from "@/lib/tauri-api";
 import { useInferenceListeners } from "@/hooks/useInferenceListeners";
 import { useModesNav } from "@/context/modes-nav-context";
 import { stripChatArtifacts } from "@/lib/inference-output";
-import type { InstalledModel, ModeDefinition, ModeModelBinding } from "@/lib/types";
+import {
+  nearestReplyLengthTokens,
+  REPLY_LENGTH_OPTIONS,
+} from "@/lib/mode-reply-length";
+import type {
+  InstalledModel,
+  ModeDefinition,
+  ModeModelBinding,
+  PromptLayout,
+} from "@/lib/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,7 +33,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import { ChevronDown, Loader2, Plus, RotateCcw, Sparkles, Trash2 } from "lucide-react";
 
 const LANGS = [
   { value: "en", label: "English" },
@@ -36,7 +47,7 @@ function newCustomMode(): ModeDefinition {
     id: `mode-${crypto.randomUUID()}`,
     name: "New mode",
     system_prompt: "",
-    user_message_template: "{{input}}",
+    prompt_layout: "plain",
     max_tokens: 768,
     builtin: false,
   };
@@ -57,6 +68,7 @@ export function ModePage() {
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
 
   const selectedMode = useMemo(
     () => (modeId ? modes.find((m) => m.id === modeId) : undefined),
@@ -119,9 +131,9 @@ export function ModePage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [busy]);
 
-  const tpl = draft?.user_message_template ?? "";
-  const needsLocale = tpl.includes("{{locale}}");
-  const needsFromTo = tpl.includes("{{from}}") || tpl.includes("{{to}}");
+  const layout: PromptLayout = draft?.prompt_layout ?? "plain";
+  const needsLocale = layout === "locale";
+  const needsFromTo = layout === "translate";
 
   const saveDraftToList = useCallback(async () => {
     if (!draft || !modeId) return;
@@ -211,8 +223,9 @@ export function ModePage() {
       <header>
         <h2 className="text-2xl font-semibold tracking-tight">{draft.name}</h2>
         <p className="text-sm text-muted-foreground">
-          Edit this mode, pick which installed GGUF it uses, then run it below. Built-in
-          Correction and Translate can be reset to factory defaults anytime.
+          Use input and output below. Open{" "}
+          <strong className="font-medium">Mode configuration</strong> for the model,
+          prompt, languages, and other settings.
         </p>
       </header>
 
@@ -224,274 +237,333 @@ export function ModePage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Model for this mode</CardTitle>
-          <CardDescription>
-            Choose an installed GGUF. If you clear the override, this mode uses the{" "}
-            <strong>default model</strong> from Model library.
-          </CardDescription>
+          <button
+            type="button"
+            className="flex w-full items-start justify-between gap-3 rounded-md text-left outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring"
+            aria-expanded={configOpen}
+            onClick={() => setConfigOpen((o) => !o)}
+          >
+            <div className="min-w-0 flex-1 space-y-1">
+              <CardTitle className="text-base">Mode configuration</CardTitle>
+              <CardDescription>
+                Model, system prompt, message shape, reply length, and languages used
+                when you run this mode.
+              </CardDescription>
+            </div>
+            <ChevronDown
+              className={cn(
+                "mt-0.5 size-5 shrink-0 text-muted-foreground transition-transform",
+                configOpen && "rotate-180",
+              )}
+              aria-hidden
+            />
+          </button>
         </CardHeader>
-        <CardContent className="flex flex-col gap-3">
-          {installed.length === 0 ? (
-            <Alert>
-              <AlertDescription>
-                No models installed.{" "}
-                <Button variant="link" className="h-auto p-0" asChild>
-                  <Link to="/models">Open Model library</Link>
-                </Button>{" "}
-                to download or import a GGUF.
-              </AlertDescription>
-            </Alert>
-          ) : modelBinding === null ? (
-            <p className="text-sm text-muted-foreground">Loading model assignment…</p>
-          ) : (
-            <>
+        {configOpen ? (
+          <CardContent className="flex flex-col gap-6 pt-0">
+            <div className="flex flex-col gap-3">
+              <h3 className="text-sm font-medium">Model</h3>
+              <p className="text-xs text-muted-foreground">
+                Choose an installed GGUF. Clear the override to use the{" "}
+                <strong>default model</strong> from Model library.
+              </p>
+              {installed.length === 0 ? (
+                <Alert>
+                  <AlertDescription>
+                    No models installed.{" "}
+                    <Button variant="link" className="h-auto p-0" asChild>
+                      <Link to="/models">Open Model library</Link>
+                    </Button>{" "}
+                    to download or import a GGUF.
+                  </AlertDescription>
+                </Alert>
+              ) : modelBinding === null ? (
+                <p className="text-sm text-muted-foreground">
+                  Loading model assignment…
+                </p>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor={`mode-model-${modeId}`}>Installed model</Label>
+                    <Select
+                      value={modelBinding.effective_model_id ?? undefined}
+                      onValueChange={(v) => void onPickModel(v)}
+                    >
+                      <SelectTrigger id={`mode-model-${modeId}`}>
+                        <SelectValue placeholder="Choose an installed model…" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {installed.map((m) => (
+                          <SelectItem key={m.id} value={m.id}>
+                            {m.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {!modelBinding.effective_model_id ? (
+                    <Alert variant="destructive">
+                      <AlertDescription>
+                        No default model is set and this mode has no assignment. Pick a
+                        model above or set a default in Model library.
+                      </AlertDescription>
+                    </Alert>
+                  ) : null}
+                  {modelBinding.override_model_id ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="w-fit"
+                      onClick={() => void onClearModelOverride()}
+                    >
+                      Use default model from library
+                    </Button>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Using the default model from Model library (no per-mode override).
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="flex flex-col gap-4">
+              <h3 className="text-sm font-medium">Prompt &amp; mode</h3>
               <div className="flex flex-col gap-2">
-                <Label htmlFor={`mode-model-${modeId}`}>Installed model</Label>
+                <Label htmlFor="mode-system">System prompt</Label>
+                <Textarea
+                  id="mode-system"
+                  value={draft.system_prompt}
+                  onChange={(e) =>
+                    setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d))
+                  }
+                  placeholder="Optional persistent instruction (empty is fine for custom modes)."
+                  className="min-h-[120px] font-mono text-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="mode-name">Name</Label>
+                <Input
+                  id="mode-name"
+                  value={draft.name}
+                  onChange={(e) =>
+                    setDraft((d) => (d ? { ...d, name: e.target.value } : d))
+                  }
+                />
+              </div>
+              {draft.builtin ? (
+                <p className="text-sm text-muted-foreground">
+                  {draft.id === "spelling"
+                    ? "Built-in correction: user turn is input language, your text, then matching output language."
+                    : "Built-in translate: user turn is source language, your text, then target language."}
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="mode-layout">User message shape</Label>
+                  <Select
+                    value={draft.prompt_layout}
+                    onValueChange={(v) =>
+                      setDraft((d) =>
+                        d ? { ...d, prompt_layout: v as PromptLayout } : d,
+                      )
+                    }
+                  >
+                    <SelectTrigger id="mode-layout">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="plain">
+                        Plain — only your typed text is sent as the user message
+                      </SelectItem>
+                      <SelectItem value="locale">
+                        With input language — for correction or tasks that need a
+                        language hint
+                      </SelectItem>
+                      <SelectItem value="translate">
+                        Translate — source language, text, then target language
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="mode-reply-length">How long the reply can grow</Label>
+                <p className="text-xs text-muted-foreground">
+                  Local models stop after at most this many new tokens (roughly word
+                  pieces, not words). Shorter is faster and enough for fixes or short
+                  answers.
+                </p>
                 <Select
-                  value={modelBinding.effective_model_id ?? undefined}
-                  onValueChange={(v) => void onPickModel(v)}
+                  value={String(nearestReplyLengthTokens(draft.max_tokens))}
+                  onValueChange={(v) =>
+                    setDraft((d) =>
+                      d ? { ...d, max_tokens: Number.parseInt(v, 10) } : d,
+                    )
+                  }
                 >
-                  <SelectTrigger id={`mode-model-${modeId}`}>
-                    <SelectValue placeholder="Choose an installed model…" />
+                  <SelectTrigger id="mode-reply-length">
+                    <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {installed.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>
-                        {m.display_name}
+                    {REPLY_LENGTH_OPTIONS.map((o) => (
+                      <SelectItem key={o.tokens} value={String(o.tokens)}>
+                        {o.label} — {o.hint}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-              {!modelBinding.effective_model_id ? (
-                <Alert variant="destructive">
-                  <AlertDescription>
-                    No default model is set and this mode has no assignment. Pick a
-                    model above or set a default in Model library.
-                  </AlertDescription>
-                </Alert>
-              ) : null}
-              {modelBinding.override_model_id ? (
+            </div>
+
+            {(needsLocale || needsFromTo) && (
+              <>
+                <Separator />
+                <div className="flex flex-col gap-4">
+                  <h3 className="text-sm font-medium">Languages for runs</h3>
+                  {needsLocale ? (
+                    <div className="flex flex-col gap-2">
+                      <Label htmlFor="cfg-locale">Input language</Label>
+                      <Select value={locale} onValueChange={setLocale}>
+                        <SelectTrigger id="cfg-locale">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LANGS.map((l) => (
+                            <SelectItem key={l.value} value={l.value}>
+                              {l.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Output language is the same; the model returns corrected text
+                        only.
+                      </p>
+                    </div>
+                  ) : null}
+                  {needsFromTo ? (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="cfg-from">Input language</Label>
+                        <Select value={fromLang} onValueChange={setFromLang}>
+                          <SelectTrigger id="cfg-from">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LANGS.map((l) => (
+                              <SelectItem key={l.value} value={l.value}>
+                                {l.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="cfg-to">Output language</Label>
+                        <Select value={toLang} onValueChange={setToLang}>
+                          <SelectTrigger id="cfg-to">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LANGS.map((l) => (
+                              <SelectItem key={l.value} value={l.value}>
+                                {l.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )}
+
+            <Separator />
+
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" onClick={() => void saveDraftToList()}>
+                Save mode
+              </Button>
+              {draft.builtin ? (
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
-                  onClick={() => void onClearModelOverride()}
+                  onClick={() => {
+                    void (async () => {
+                      setErr(null);
+                      try {
+                        await invoke("reset_mode_to_default", { modeId: draft.id });
+                        await refreshModes();
+                      } catch (e) {
+                        setErr(String(e));
+                      }
+                    })();
+                  }}
                 >
-                  Use default model from library
+                  <RotateCcw aria-hidden />
+                  Reset to default
                 </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Using the default model from Model library (no per-mode override).
-                </p>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Mode definition</CardTitle>
-          <CardDescription>
-            Optional placeholders: <code className="text-xs">{"{{locale}}"}</code>,{" "}
-            <code className="text-xs">{"{{from}}"}</code>,{" "}
-            <code className="text-xs">{"{{to}}"}</code>. User template must include{" "}
-            <code className="text-xs">{"{{input}}"}</code>.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="mode-name">Name</Label>
-              <Input
-                id="mode-name"
-                value={draft.name}
-                onChange={(e) =>
-                  setDraft((d) => (d ? { ...d, name: e.target.value } : d))
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="mode-max">Max tokens</Label>
-              <Input
-                id="mode-max"
-                type="number"
-                min={64}
-                max={8192}
-                value={draft.max_tokens}
-                onChange={(e) =>
-                  setDraft((d) =>
-                    d
-                      ? {
-                          ...d,
-                          max_tokens: Number(e.target.value) || 64,
-                        }
-                      : d,
-                  )
-                }
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="mode-system">System prompt</Label>
-            <Textarea
-              id="mode-system"
-              value={draft.system_prompt}
-              onChange={(e) =>
-                setDraft((d) => (d ? { ...d, system_prompt: e.target.value } : d))
-              }
-              placeholder="Optional persistent instruction (empty is fine for custom modes)."
-              className="min-h-[120px] font-mono text-sm"
-            />
-          </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="mode-user-tpl">User message template</Label>
-            <Textarea
-              id="mode-user-tpl"
-              value={draft.user_message_template}
-              onChange={(e) =>
-                setDraft((d) =>
-                  d ? { ...d, user_message_template: e.target.value } : d,
-                )
-              }
-              className="min-h-[160px] font-mono text-sm"
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => void saveDraftToList()}>
-              Save mode
-            </Button>
-            {draft.builtin ? (
+              ) : null}
+              {!draft.builtin ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => {
+                    void (async () => {
+                      setErr(null);
+                      try {
+                        await invoke("delete_mode", { modeId: draft.id });
+                        await refreshModes();
+                        navigate("/mode/spelling", { replace: true });
+                      } catch (e) {
+                        setErr(String(e));
+                      }
+                    })();
+                  }}
+                >
+                  <Trash2 aria-hidden />
+                  Delete
+                </Button>
+              ) : null}
               <Button
                 type="button"
-                variant="outline"
+                variant="secondary"
                 onClick={() => {
+                  const base = draft;
+                  const copy: ModeDefinition = {
+                    ...base,
+                    id: `mode-${crypto.randomUUID()}`,
+                    name: `${base.name} (copy)`,
+                    builtin: false,
+                  };
                   void (async () => {
                     setErr(null);
                     try {
-                      await invoke("reset_mode_to_default", { modeId: draft.id });
+                      await invoke("set_modes", { modes: [...modes, copy] });
                       await refreshModes();
+                      navigate(`/mode/${copy.id}`, { replace: false });
                     } catch (e) {
                       setErr(String(e));
                     }
                   })();
                 }}
               >
-                <RotateCcw aria-hidden />
-                Reset to default
+                Duplicate
               </Button>
-            ) : null}
-            {!draft.builtin ? (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => {
-                  void (async () => {
-                    setErr(null);
-                    try {
-                      await invoke("delete_mode", { modeId: draft.id });
-                      await refreshModes();
-                      navigate("/mode/spelling", { replace: true });
-                    } catch (e) {
-                      setErr(String(e));
-                    }
-                  })();
-                }}
-              >
-                <Trash2 aria-hidden />
-                Delete
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                const base = draft;
-                const copy: ModeDefinition = {
-                  ...base,
-                  id: `mode-${crypto.randomUUID()}`,
-                  name: `${base.name} (copy)`,
-                  builtin: false,
-                };
-                void (async () => {
-                  setErr(null);
-                  try {
-                    await invoke("set_modes", { modes: [...modes, copy] });
-                    await refreshModes();
-                    navigate(`/mode/${copy.id}`, { replace: false });
-                  } catch (e) {
-                    setErr(String(e));
-                  }
-                })();
-              }}
-            >
-              Duplicate
-            </Button>
-          </div>
-        </CardContent>
+            </div>
+          </CardContent>
+        ) : null}
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Run</CardTitle>
-          <CardDescription>
-            Your text replaces <code className="text-xs">{"{{input}}"}</code>.
-            Ctrl+Enter to run; Escape cancels.
-          </CardDescription>
+          <CardTitle className="text-base">Input &amp; output</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          {needsLocale ? (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="run-locale">Locale hint</Label>
-              <Select value={locale} onValueChange={setLocale}>
-                <SelectTrigger id="run-locale">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {LANGS.map((l) => (
-                    <SelectItem key={l.value} value={l.value}>
-                      {l.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          ) : null}
-          {needsFromTo ? (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="run-from">From</Label>
-                <Select value={fromLang} onValueChange={setFromLang}>
-                  <SelectTrigger id="run-from">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LANGS.map((l) => (
-                      <SelectItem key={l.value} value={l.value}>
-                        {l.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="run-to">To</Label>
-                <Select value={toLang} onValueChange={setToLang}>
-                  <SelectTrigger id="run-to">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {LANGS.map((l) => (
-                      <SelectItem key={l.value} value={l.value}>
-                        {l.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          ) : null}
           <div className="flex flex-col gap-2">
             <Label htmlFor="run-input">Input</Label>
             <Textarea
@@ -504,47 +576,53 @@ export function ModePage() {
                   void run();
                 }
               }}
-              className="min-h-[140px]"
+              className="min-h-[160px]"
               placeholder="Text to process…"
             />
           </div>
-          <Button
-            type="button"
-            onClick={() => void run()}
-            disabled={
-              busy ||
-              !inputText.trim() ||
-              modelBinding === null ||
-              !modelBinding.effective_model_id
-            }
-          >
-            {busy ? (
-              <>
-                <Loader2 className="animate-spin" aria-hidden />
-                Running…
-              </>
-            ) : (
-              <>
-                <Sparkles aria-hidden />
-                Run mode
-              </>
-            )}
-          </Button>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Output</CardTitle>
-          <CardDescription>Streams while generating.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Textarea
-            value={out}
-            readOnly
-            aria-live="polite"
-            className="min-h-[160px] font-mono text-sm"
-          />
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              onClick={() => void run()}
+              disabled={
+                busy ||
+                !inputText.trim() ||
+                modelBinding === null ||
+                !modelBinding.effective_model_id
+              }
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="animate-spin" aria-hidden />
+                  Running…
+                </>
+              ) : (
+                <>
+                  <Sparkles aria-hidden />
+                  Run mode
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!busy}
+              onClick={() => void invoke("cancel_generation").catch(() => {})}
+            >
+              Cancel
+            </Button>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="run-output">Output</Label>
+            <Textarea
+              id="run-output"
+              value={out}
+              readOnly
+              aria-live="polite"
+              className="min-h-[180px] font-mono text-sm"
+              placeholder="Reply will appear here..."
+            />
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -1,14 +1,16 @@
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_opener::OpenerExt;
 
 use std::collections::HashSet;
 
 use crate::catalog::{self, CatalogModel};
+use crate::chat_template::manifest_template_key_from_hints;
 use crate::download;
 #[cfg(not(feature = "llama"))]
 use crate::error::MagunaError;
 #[cfg(feature = "llama")]
 use crate::inference;
-use crate::modes::{self, ModeDefinition};
+use crate::modes::{self, ModeDefinition, PromptLayout};
 use crate::state::AppState;
 use crate::storage::{self, InstalledModelDto};
 
@@ -17,6 +19,33 @@ use crate::storage::{self, InstalledModelDto};
 pub struct ModeModelBinding {
     pub effective_model_id: Option<String>,
     pub override_model_id: Option<String>,
+}
+
+/// When at least one model is installed but there is no valid default, set `active_model_id`
+/// to `prefer_id` if it is installed, otherwise the first installed model (name order).
+pub(crate) fn sync_default_model_from_installs(
+    app: &AppHandle,
+    state: &AppState,
+    prefer_id: Option<&str>,
+) -> Result<(), String> {
+    let installed = storage::list_installed(app).map_err(|e| e.to_string())?;
+    if installed.is_empty() {
+        return Ok(());
+    }
+    let id_set: HashSet<&str> = installed.iter().map(|m| m.id.as_str()).collect();
+    let active_ok = state
+        .get_active_id()
+        .as_ref()
+        .is_some_and(|id| id_set.contains(id.as_str()));
+    if active_ok {
+        return Ok(());
+    }
+    let chosen = prefer_id
+        .filter(|id| id_set.contains(id))
+        .unwrap_or_else(|| installed.first().unwrap().id.as_str());
+    state
+        .set_active_id(app, Some(chosen.to_string()))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -34,6 +63,17 @@ pub fn list_installed_models(app: AppHandle) -> Result<Vec<InstalledModelDto>, S
 #[tauri::command]
 pub fn get_active_model_id(state: State<'_, AppState>) -> Result<Option<String>, String> {
     Ok(state.get_active_id())
+}
+
+/// Opens the resolved models directory in File Explorer / Finder / the system file manager.
+#[tauri::command]
+pub fn open_models_install_folder(app: AppHandle) -> Result<(), String> {
+    let dir = crate::paths::models_dir(&app).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.to_string_lossy().into_owned();
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -138,11 +178,16 @@ pub async fn delete_model(
         .remove_model_from_all_bindings(&app, &model_id)
         .map_err(|e| e.to_string())?;
     storage::delete_installed(&app, &model_id).map_err(|e| e.to_string())?;
+    sync_default_model_from_installs(&app, &state, None)?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn download_model(app: AppHandle, catalog_id: String) -> Result<(), String> {
+pub async fn download_model(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    catalog_id: String,
+) -> Result<(), String> {
     let entry = catalog::find_catalog_model(&catalog_id).map_err(|e| e.to_string())?;
     let app_c = app.clone();
     let id = entry.id.clone();
@@ -151,6 +196,7 @@ pub async fn download_model(app: AppHandle, catalog_id: String) -> Result<(), St
             "download-progress",
             serde_json::json!({
                 "model_id": id,
+                "phase": "downloading",
                 "received": received,
                 "total": total,
             }),
@@ -158,21 +204,26 @@ pub async fn download_model(app: AppHandle, catalog_id: String) -> Result<(), St
     })
     .await
     .map_err(|e| e.to_string())?;
-    storage::install_from_catalog(&app, &entry, partial).map_err(|e| e.to_string())?;
+    // Network stream is done; moving/copying the GGUF into `Models/` can take a long time
+    // (especially cross-drive on Windows). Tell the UI so users do not assume it hung.
     let _ = app.emit(
         "download-progress",
         serde_json::json!({
-            "model_id": entry.id,
+            "model_id": &entry.id,
+            "phase": "installing",
             "received": entry.size_bytes,
             "total": entry.size_bytes,
         }),
     );
+    storage::install_from_catalog(&app, &entry, partial).map_err(|e| e.to_string())?;
+    sync_default_model_from_installs(&app, &state, Some(entry.id.as_str()))?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn import_gguf(
     app: AppHandle,
+    state: State<'_, AppState>,
     source_path: String,
     display_name: String,
 ) -> Result<String, String> {
@@ -191,17 +242,25 @@ pub async fn import_gguf(
         .map_err(|e| e.to_string())?
         .join(&id);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let dest = dir.join("model.gguf");
+    let dest = dir.join(storage::weights_filename(&id));
     std::fs::copy(&src, &dest).map_err(|e| e.to_string())?;
+    let stem_hint = src
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .trim();
+    let display_trim = display_name.trim();
+    let chat_template = manifest_template_key_from_hints([stem_hint, display_trim]);
     let manifest = storage::InstalledManifest {
         id: id.clone(),
         display_name,
         gguf_path: dest,
         sha256: None,
         source_url: None,
-        chat_template: String::new(),
+        chat_template,
     };
     storage::write_manifest(&dir, &manifest).map_err(|e| e.to_string())?;
+    sync_default_model_from_installs(&app, &state, Some(id.as_str()))?;
     Ok(id)
 }
 
@@ -237,11 +296,11 @@ pub(crate) fn validate_modes(modes: &[ModeDefinition]) -> Result<(), String> {
         if !seen.insert(m.id.as_str()) {
             return Err(format!("Duplicate mode id: {}", m.id));
         }
-        if !m.user_message_template.contains("{{input}}") {
-            return Err(format!(
-                "Mode \"{}\" must include {{input}} in the user message template.",
-                m.name
-            ));
+        if m.id == "spelling" && m.prompt_layout != PromptLayout::Locale {
+            return Err("Built-in Correction mode must use the locale prompt layout.".into());
+        }
+        if m.id == "translate" && m.prompt_layout != PromptLayout::Translate {
+            return Err("Built-in Translate mode must use the translate prompt layout.".into());
         }
         if m.max_tokens < 64 || m.max_tokens > 8192 {
             return Err(format!(
@@ -265,8 +324,12 @@ pub fn get_modes(app: AppHandle) -> Result<Vec<ModeDefinition>, String> {
 #[tauri::command]
 pub fn set_modes(app: AppHandle, mut modes: Vec<ModeDefinition>) -> Result<(), String> {
     for m in &mut modes {
-        if m.id == "spelling" || m.id == "translate" {
+        if m.id == "spelling" {
             m.builtin = true;
+            m.prompt_layout = PromptLayout::Locale;
+        } else if m.id == "translate" {
+            m.builtin = true;
+            m.prompt_layout = PromptLayout::Translate;
         }
     }
     validate_modes(&modes)?;
@@ -305,21 +368,23 @@ pub async fn run_mode(
         .find(|m| m.id == mode_id)
         .ok_or_else(|| format!("Unknown mode: {mode_id}"))?;
 
-    let tpl = &mode.user_message_template;
-    if tpl.contains("{{locale}}") {
-        let loc = locale
-            .as_deref()
-            .ok_or_else(|| "Locale is required for this mode.".to_string())?;
-        assert_en_de_locale(loc)?;
-    }
-    if tpl.contains("{{from}}") || tpl.contains("{{to}}") {
-        let f = from_lang
-            .as_deref()
-            .ok_or_else(|| "Source language is required for this mode.".to_string())?;
-        let t = to_lang
-            .as_deref()
-            .ok_or_else(|| "Target language is required for this mode.".to_string())?;
-        assert_en_de_translate(f, t)?;
+    match mode.prompt_layout {
+        PromptLayout::Locale => {
+            let loc = locale
+                .as_deref()
+                .ok_or_else(|| "Input language is required for this mode.".to_string())?;
+            assert_en_de_locale(loc)?;
+        }
+        PromptLayout::Translate => {
+            let f = from_lang
+                .as_deref()
+                .ok_or_else(|| "Source language is required for this mode.".to_string())?;
+            let t = to_lang
+                .as_deref()
+                .ok_or_else(|| "Target language is required for this mode.".to_string())?;
+            assert_en_de_translate(f, t)?;
+        }
+        PromptLayout::Plain => {}
     }
 
     let effective_model = state.resolve_model_for_mode(&mode_id).ok_or_else(|| {
@@ -338,8 +403,8 @@ pub async fn run_mode(
         }
     }
 
-    let user = modes::build_user_message(
-        tpl,
+    let user = modes::format_user_turn(
+        mode.prompt_layout,
         &input,
         locale.as_deref(),
         from_lang.as_deref(),
@@ -391,12 +456,12 @@ mod validate_tests {
     use super::validate_modes;
     use crate::modes::{self, ModeDefinition};
 
-    fn mode(id: &str, name: &str, tpl: &str, max: u32) -> ModeDefinition {
+    fn mode(id: &str, name: &str, layout: modes::PromptLayout, max: u32) -> ModeDefinition {
         ModeDefinition {
             id: id.into(),
             name: name.into(),
             system_prompt: String::new(),
-            user_message_template: tpl.into(),
+            prompt_layout: layout,
             max_tokens: max,
             builtin: false,
         }
@@ -410,48 +475,56 @@ mod validate_tests {
 
     #[test]
     fn validate_accepts_valid_custom() {
-        let v = builtins_plus(vec![mode("custom", "Custom", "{{input}}", 128)]);
+        let v = builtins_plus(vec![mode(
+            "custom",
+            "Custom",
+            modes::PromptLayout::Plain,
+            128,
+        )]);
         assert!(validate_modes(&v).is_ok());
     }
 
     #[test]
     fn validate_rejects_duplicate_id() {
         let v = builtins_plus(vec![
-            mode("x", "A", "{{input}}", 128),
-            mode("x", "B", "{{input}}", 256),
+            mode("x", "A", modes::PromptLayout::Plain, 128),
+            mode("x", "B", modes::PromptLayout::Plain, 256),
         ]);
         assert!(validate_modes(&v).is_err());
     }
 
     #[test]
-    fn validate_rejects_missing_input_placeholder() {
-        let v = builtins_plus(vec![mode("x", "Bad", "hello", 128)]);
+    fn validate_rejects_wrong_builtin_layout() {
+        let mut v = modes::default_modes();
+        if let Some(m) = v.iter_mut().find(|m| m.id == "spelling") {
+            m.prompt_layout = modes::PromptLayout::Plain;
+        }
         assert!(validate_modes(&v).is_err());
     }
 
     #[test]
     fn validate_rejects_low_max_tokens() {
-        let v = builtins_plus(vec![mode("x", "Bad", "{{input}}", 32)]);
+        let v = builtins_plus(vec![mode("x", "Bad", modes::PromptLayout::Plain, 32)]);
         assert!(validate_modes(&v).is_err());
     }
 
     #[test]
     fn validate_rejects_high_max_tokens() {
-        let v = builtins_plus(vec![mode("x", "Bad", "{{input}}", 9000)]);
+        let v = builtins_plus(vec![mode("x", "Bad", modes::PromptLayout::Plain, 9000)]);
         assert!(validate_modes(&v).is_err());
     }
 
     #[test]
     fn validate_accepts_max_tokens_boundaries() {
-        let lo = builtins_plus(vec![mode("x", "Lo", "{{input}}", 64)]);
+        let lo = builtins_plus(vec![mode("x", "Lo", modes::PromptLayout::Plain, 64)]);
         assert!(validate_modes(&lo).is_ok());
-        let hi = builtins_plus(vec![mode("y", "Hi", "{{input}}", 8192)]);
+        let hi = builtins_plus(vec![mode("y", "Hi", modes::PromptLayout::Plain, 8192)]);
         assert!(validate_modes(&hi).is_ok());
     }
 
     #[test]
     fn validate_requires_spelling_and_translate() {
-        let v = vec![mode("a", "Only", "{{input}}", 128)];
+        let v = vec![mode("a", "Only", modes::PromptLayout::Plain, 128)];
         assert!(validate_modes(&v).is_err());
     }
 }

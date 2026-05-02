@@ -38,7 +38,7 @@ function AppShell() {
         <div className="p-4">
           <h1 className="text-lg font-semibold tracking-tight">Maguna</h1>
           <p className="text-xs text-muted-foreground">
-            Model library & modes — one page per mode
+            Helvety&apos;s local AI Assistant
           </p>
         </div>
         <Separator />

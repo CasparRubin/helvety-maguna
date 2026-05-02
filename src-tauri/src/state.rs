@@ -150,10 +150,7 @@ impl AppState {
         let dir = paths::models_dir(app)?.join(model_id);
         let manifest = crate::storage::read_manifest(&dir)?;
         let template = ChatTemplate::resolve(&manifest.chat_template, model_id);
-        let path = manifest.gguf_path.clone();
-        if !path.exists() {
-            return Err(MagunaError::msg("GGUF file missing on disk"));
-        }
+        let path = crate::storage::effective_gguf_path(&dir, &manifest)?;
         let params = llama_cpp::LlamaParams::default();
         let model = llama_cpp::LlamaModel::load_from_file(path, params)
             .map_err(|e| MagunaError::msg(format!("load model: {e}")))?;

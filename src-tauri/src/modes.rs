@@ -4,19 +4,74 @@ use crate::error::{MagunaError, MagunaResult};
 use crate::paths;
 use crate::prompts;
 
+/// How the user turn is formatted (no free-form template).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptLayout {
+    /// Only the input block is sent.
+    #[default]
+    Plain,
+    /// Input language (locale) + input + output language (same as locale).
+    Locale,
+    /// Input language (source) + input + output language (target).
+    Translate,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModeDefinition {
     pub id: String,
     pub name: String,
     /// User-owned except built-in `spelling` / `translate` factory defaults in `prompts.rs`.
-    /// Empty is allowed (custom modes may rely only on the user template).
+    /// Empty is allowed for custom modes.
     pub system_prompt: String,
-    /// Must contain `{{input}}`. Optional: `{{locale}}`, `{{from}}`, `{{to}}`.
-    pub user_message_template: String,
+    #[serde(default)]
+    pub prompt_layout: PromptLayout,
     #[serde(default = "default_max_tokens")]
     pub max_tokens: u32,
     #[serde(default)]
     pub builtin: bool,
+}
+
+/// Loose shape for `modes.json` migration (older files had `user_message_template`).
+#[derive(Debug, Deserialize)]
+struct ModeDefinitionLoose {
+    id: String,
+    name: String,
+    system_prompt: String,
+    #[serde(default)]
+    user_message_template: Option<String>,
+    #[serde(default)]
+    prompt_layout: Option<PromptLayout>,
+    #[serde(default = "default_max_tokens")]
+    max_tokens: u32,
+    #[serde(default)]
+    builtin: bool,
+}
+
+impl From<ModeDefinitionLoose> for ModeDefinition {
+    fn from(loose: ModeDefinitionLoose) -> Self {
+        let prompt_layout = loose.prompt_layout.unwrap_or_else(|| {
+            let t = loose
+                .user_message_template
+                .as_deref()
+                .unwrap_or("{{input}}");
+            if t.contains("{{from}}") || t.contains("{{to}}") {
+                PromptLayout::Translate
+            } else if t.contains("{{locale}}") {
+                PromptLayout::Locale
+            } else {
+                PromptLayout::Plain
+            }
+        });
+        ModeDefinition {
+            id: loose.id,
+            name: loose.name,
+            system_prompt: loose.system_prompt,
+            prompt_layout,
+            max_tokens: loose.max_tokens,
+            builtin: loose.builtin,
+        }
+    }
 }
 
 fn default_max_tokens() -> u32 {
@@ -29,7 +84,7 @@ pub fn default_modes() -> Vec<ModeDefinition> {
             id: "spelling".into(),
             name: "Correction".into(),
             system_prompt: prompts::SPELLING_SYSTEM.into(),
-            user_message_template: prompts::SPELLING_USER_TEMPLATE.into(),
+            prompt_layout: PromptLayout::Locale,
             max_tokens: 384,
             builtin: true,
         },
@@ -37,7 +92,7 @@ pub fn default_modes() -> Vec<ModeDefinition> {
             id: "translate".into(),
             name: "Translate".into(),
             system_prompt: prompts::TRANSLATE_SYSTEM.into(),
-            user_message_template: prompts::TRANSLATE_USER_TEMPLATE.into(),
+            prompt_layout: PromptLayout::Translate,
             max_tokens: 1024,
             builtin: true,
         },
@@ -56,9 +111,10 @@ pub fn load_modes(app: &tauri::AppHandle) -> MagunaResult<Vec<ModeDefinition>> {
         return Ok(defaults);
     }
     let raw = std::fs::read_to_string(&path)?;
-    let parsed: Result<Vec<ModeDefinition>, _> = serde_json::from_str(&raw);
+    let parsed: Result<Vec<ModeDefinitionLoose>, _> = serde_json::from_str(&raw);
     match parsed {
-        Ok(mut v) => {
+        Ok(loose_list) => {
+            let mut v: Vec<ModeDefinition> = loose_list.into_iter().map(Into::into).collect();
             let before = v.clone();
             ensure_builtin_shape(&mut v);
             if v != before {
@@ -86,6 +142,15 @@ fn ensure_builtin_shape(modes: &mut Vec<ModeDefinition>) {
             .map(|i| i + 1)
             .unwrap_or(0);
         modes.insert(pos, default_modes()[1].clone());
+    }
+    // Built-ins must keep their intended layout.
+    if let Some(m) = modes.iter_mut().find(|m| m.id == "spelling") {
+        m.prompt_layout = PromptLayout::Locale;
+        m.builtin = true;
+    }
+    if let Some(m) = modes.iter_mut().find(|m| m.id == "translate") {
+        m.prompt_layout = PromptLayout::Translate;
+        m.builtin = true;
     }
 }
 
@@ -117,25 +182,28 @@ pub fn reset_builtin(app: &tauri::AppHandle, mode_id: &str) -> MagunaResult<()> 
     save_modes(app, &modes)
 }
 
-pub fn build_user_message(
-    template: &str,
+/// Fixed user-turn layout: input language → input → output language (when applicable).
+pub fn format_user_turn(
+    layout: PromptLayout,
     input: &str,
     locale: Option<&str>,
     from: Option<&str>,
     to: Option<&str>,
 ) -> String {
-    let mut s = template.to_string();
-    s = s.replace("{{input}}", input);
-    if let Some(l) = locale {
-        s = s.replace("{{locale}}", l);
+    match layout {
+        PromptLayout::Plain => {
+            format!("Input:\n\n{input}")
+        }
+        PromptLayout::Locale => {
+            let loc = locale.unwrap_or("?");
+            format!("Input language: {loc}\n\nInput:\n\n{input}\n\nOutput language: {loc}")
+        }
+        PromptLayout::Translate => {
+            let f = from.unwrap_or("?");
+            let t = to.unwrap_or("?");
+            format!("Input language: {f}\n\nInput:\n\n{input}\n\nOutput language: {t}")
+        }
     }
-    if let Some(f) = from {
-        s = s.replace("{{from}}", f);
-    }
-    if let Some(t) = to {
-        s = s.replace("{{to}}", t);
-    }
-    s
 }
 
 #[cfg(test)]
@@ -143,22 +211,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn build_user_message_replaces_input() {
+    fn format_plain() {
         assert_eq!(
-            build_user_message("Hello {{input}}", "world", None, None, None),
-            "Hello world"
+            format_user_turn(PromptLayout::Plain, "hello", None, None, None),
+            "Input:\n\nhello"
         );
     }
 
     #[test]
-    fn build_user_message_all_placeholders() {
-        let out = build_user_message(
-            "{{locale}}|{{from}}|{{to}}|{{input}}",
-            "text",
-            Some("de"),
-            Some("en"),
-            Some("fr"),
-        );
-        assert_eq!(out, "de|en|fr|text");
+    fn format_locale() {
+        let out = format_user_turn(PromptLayout::Locale, "text", Some("de"), None, None);
+        assert!(out.contains("Input language: de"));
+        assert!(out.contains("text"));
+        assert!(out.contains("Output language: de"));
+    }
+
+    #[test]
+    fn format_translate() {
+        let out = format_user_turn(PromptLayout::Translate, "hi", None, Some("en"), Some("de"));
+        assert!(out.contains("Input language: en"));
+        assert!(out.contains("hi"));
+        assert!(out.contains("Output language: de"));
     }
 }

@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke, listen } from "@/lib/tauri-api";
-import { Trash2, Download, HardDrive, FolderInput } from "lucide-react";
+import {
+  FolderOpen,
+  Trash2,
+  Download,
+  HardDrive,
+  FolderInput,
+  Loader2,
+} from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -24,12 +31,15 @@ import {
 import { cn } from "@/lib/utils";
 import type { CatalogEntry, InstalledModel } from "@/lib/types";
 
+type DownloadPhase = "downloading" | "installing";
+
 export function ModelsPage() {
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [installed, setInstalled] = useState<InstalledModel[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<{
     modelId: string;
+    phase: DownloadPhase;
     received: number;
     total: number | null;
   } | null>(null);
@@ -61,11 +71,15 @@ export function ModelsPage() {
     let unlisten: (() => void) | undefined;
     void listen<{
       model_id: string;
+      phase?: DownloadPhase;
       received: number;
       total: number | null;
     }>("download-progress", (ev) => {
+      const phase: DownloadPhase =
+        ev.payload.phase === "installing" ? "installing" : "downloading";
       setDownloadProgress({
         modelId: ev.payload.model_id,
+        phase,
         received: ev.payload.received,
         total: ev.payload.total,
       });
@@ -82,12 +96,14 @@ export function ModelsPage() {
   const catalogSorted = useMemo(() => sortCatalogByRecommendation(catalog), [catalog]);
 
   const pct =
-    downloadProgress && downloadProgress.total
+    downloadProgress &&
+    downloadProgress.phase === "downloading" &&
+    downloadProgress.total
       ? Math.min(
           100,
           Math.round((downloadProgress.received / downloadProgress.total) * 100),
         )
-      : downloadProgress
+      : downloadProgress && downloadProgress.phase === "downloading"
         ? undefined
         : 0;
 
@@ -98,8 +114,12 @@ export function ModelsPage() {
         <p className="text-sm text-muted-foreground">
           Pick a model, download or import the GGUF, then set it as default if you want
           every mode to use it unless you choose otherwise on that mode&apos;s page.
-          Catalog entries include the right chat template for each model family; imports
-          pick a template from the filename when possible.
+          Catalog entries record the prompt framing (“chat template”) for each
+          architecture. Imports guess it from the <strong>.gguf file name</strong> (and
+          your display name hints) when those look like a known model family. After the
+          downloading step fills in, Maguna shows <strong>Finishing install</strong>{" "}
+          while the file is moved into your model folder (large models can take minutes,
+          especially across drives).
         </p>
       </header>
 
@@ -109,72 +129,55 @@ export function ModelsPage() {
         </Alert>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <FolderInput className="size-4 shrink-0" aria-hidden />
-            Import GGUF
-          </CardTitle>
-          <CardDescription>
-            Copy a <code className="text-xs">.gguf</code> file into Maguna&apos;s
-            managed storage (full path on this computer).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div className="grid flex-1 gap-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="import-path">File path</Label>
-              <Input
-                id="import-path"
-                value={importPath}
-                onChange={(e) => setImportPath(e.target.value)}
-                placeholder="D:\Models\my-model.gguf"
-                autoComplete="off"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="import-name">Display name</Label>
-              <Input
-                id="import-name"
-                value={importName}
-                onChange={(e) => setImportName(e.target.value)}
-              />
-            </div>
-          </div>
-          <Button
-            type="button"
-            onClick={() => {
-              setError(null);
-              void invoke("import_gguf", {
-                sourcePath: importPath,
-                displayName: importName,
-              })
-                .then(() => {
-                  setImportPath("");
-                  return refresh();
-                })
-                .catch((e) => setError(String(e)));
-            }}
-            disabled={!importPath.trim()}
-          >
-            Import
-          </Button>
-        </CardContent>
-      </Card>
-
       {downloadProgress ? (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Downloading</CardTitle>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              {downloadProgress.phase === "installing" ? (
+                <>
+                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
+                  Finishing install
+                </>
+              ) : (
+                "Downloading"
+              )}
+            </CardTitle>
             <CardDescription>
-              {downloadProgress.modelId} —{" "}
-              {downloadProgress.total != null
-                ? `${(downloadProgress.received / 1_000_000).toFixed(1)} / ${(downloadProgress.total / 1_000_000).toFixed(1)} MB`
-                : `${(downloadProgress.received / 1_000_000).toFixed(1)} MB`}
+              {downloadProgress.phase === "installing" ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {downloadProgress.modelId}
+                  </span>
+                  {" — "}
+                  Moving the weights into your model library (from Maguna&apos;s
+                  temporary download folder if needed). This step can take a long time
+                  for multi-gigabyte files—especially copying from your profile data
+                  folder (on Windows, under{" "}
+                  <code className="text-xs">AppData\Roaming</code> for this app) to
+                  another drive. Leave the app open until this card disappears.
+                </>
+              ) : (
+                <>
+                  {downloadProgress.modelId} —{" "}
+                  {downloadProgress.total != null
+                    ? `${(downloadProgress.received / 1_000_000).toFixed(1)} / ${(downloadProgress.total / 1_000_000).toFixed(1)} MB`
+                    : `${(downloadProgress.received / 1_000_000).toFixed(1)} MB`}
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Progress value={pct} />
+            {downloadProgress.phase === "installing" ? (
+              <div
+                className="h-2 w-full overflow-hidden rounded-full bg-primary/20"
+                role="progressbar"
+                aria-valuetext="Installing"
+              >
+                <div className="h-full w-full animate-pulse bg-primary/50" />
+              </div>
+            ) : (
+              <Progress value={pct} />
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -190,7 +193,22 @@ export function ModelsPage() {
             its own installed GGUF in the sidebar.
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-col gap-2">
+        <CardContent className="flex flex-col gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-fit gap-2"
+            onClick={() => {
+              setError(null);
+              void invoke("open_models_install_folder").catch((e) =>
+                setError(String(e)),
+              );
+            }}
+          >
+            <FolderOpen className="size-4 shrink-0" aria-hidden />
+            Open models folder
+          </Button>
           {installed.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No models installed yet. Download one from the catalog below.
@@ -263,45 +281,45 @@ export function ModelsPage() {
           {catalogSorted.map((entry, index) => (
             <Card
               key={entry.id}
-              className={cn(
-                index === 0 &&
-                  "border-primary/50 shadow-sm ring-1 ring-ring/60 ring-offset-2 ring-offset-background",
-              )}
+              className={cn(index === 0 && "border-primary/40 shadow-sm")}
             >
-              <CardHeader className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <CardHeader className="space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-1">
                     {index === 0 ? (
-                      <Badge className="text-xs font-semibold uppercase tracking-wide">
-                        Top pick
+                      <Badge variant="default" className="w-fit">
+                        Featured
                       </Badge>
                     ) : null}
                     <CardTitle className="text-base leading-snug">
                       {entry.display_name}
                     </CardTitle>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      {entry.maker}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{entry.maker}</p>
                   </div>
                   <Badge
                     variant="secondary"
-                    className="min-h-10 min-w-[6.25rem] text-base tabular-nums tracking-tight"
+                    className="shrink-0 tabular-nums"
                     title="Approximate download size"
                   >
                     {formatApproxDownloadGb(entry.size_bytes)}
                   </Badge>
                 </div>
-                <CardDescription className="leading-relaxed">
+                <CardDescription className="text-sm leading-relaxed">
                   {entry.description}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
-                <p className="text-xs">
-                  Chat template: {entry.chat_template ?? "tinyllama_v1"}
+              <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-muted-foreground">
+                  Template:{" "}
+                  <span className="font-mono text-foreground/80">
+                    {entry.chat_template ?? "tinyllama_v1"}
+                  </span>
                 </p>
                 <Button
                   type="button"
-                  disabled={isInstalled(entry.id)}
+                  size="sm"
+                  className="w-full shrink-0 sm:w-auto"
+                  disabled={isInstalled(entry.id) || downloadProgress !== null}
                   onClick={() => {
                     setError(null);
                     void invoke("download_model", { catalogId: entry.id })
@@ -323,6 +341,59 @@ export function ModelsPage() {
           ))}
         </div>
       </section>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FolderInput className="size-4 shrink-0" aria-hidden />
+            Import GGUF
+          </CardTitle>
+          <CardDescription>
+            Copy a <code className="text-xs">.gguf</code> file into Maguna&apos;s
+            managed storage (full path on this computer).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="grid flex-1 gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="import-path">File path</Label>
+              <Input
+                id="import-path"
+                value={importPath}
+                onChange={(e) => setImportPath(e.target.value)}
+                placeholder="D:\Models\my-model.gguf"
+                autoComplete="off"
+              />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="import-name">Display name</Label>
+              <Input
+                id="import-name"
+                value={importName}
+                onChange={(e) => setImportName(e.target.value)}
+              />
+            </div>
+          </div>
+          <Button
+            type="button"
+            onClick={() => {
+              setError(null);
+              void invoke("import_gguf", {
+                sourcePath: importPath,
+                displayName: importName,
+              })
+                .then(() => {
+                  setImportPath("");
+                  return refresh();
+                })
+                .catch((e) => setError(String(e)));
+            }}
+            disabled={!importPath.trim()}
+          >
+            Import
+          </Button>
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -11,7 +11,7 @@ export type CatalogEntry = {
   languages: string[];
   license_note: string;
   hf_repo: string;
-  /** e.g. `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`, `qwen2_instruct`, `gemma2_it`, `moonshot_instruct`; omitted defaults server-side. */
+  /** e.g. `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`, `qwen2_instruct`, `gemma2_it`, `moonshot_instruct`; bundled catalog supplies this; omitting defaults to Rust `tinyllama_v1`. */
   chat_template?: string;
 };
 
@@ -30,13 +30,16 @@ export type InstalledModel = {
   chat_template?: string;
 };
 
-/** Mode: optional system string + user template (`{{input}}`; optional `{{locale}}`, `{{from}}`, `{{to}}`). */
+/** How the app builds the user turn before sending it to the local model. */
+export type PromptLayout = "plain" | "locale" | "translate";
+
+/** Mode: system prompt + structured user turn (see `prompt_layout`). */
 export type ModeDefinition = {
   id: string;
   name: string;
   /** Empty for custom modes is fine; Maguna only authors defaults for built-in correction + translate. */
   system_prompt: string;
-  user_message_template: string;
+  prompt_layout: PromptLayout;
   max_tokens: number;
   builtin: boolean;
 };

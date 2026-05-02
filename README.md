@@ -32,6 +32,18 @@ That starts the full app: **Model library** (catalog, download, import, default 
 - **Each mode:** optional per-mode model; edit prompts; **Run** uses your installed weights only.
 - **Appearance:** the sidebar has **Match system**, **Light**, and **Dark**; the choice is persisted with the app (same `localStorage` API as in the Tauri webview).
 
+### Where models are stored
+
+Weights live under a single **`Models`** directory (each catalog/import gets its own subfolder with `<model_id>.gguf` and `manifest.json`; older installs may still use `model.gguf`). Maguna picks that directory like this:
+
+- **Windows** — normally **`Models` next to `maguna.exe`** (for example `C:\Program Files\Maguna\Models`). When you **develop** from this repo, the binary is usually `src-tauri\target\debug\maguna.exe`, so installs often land under **`…\target\debug\Models`**.  
+  If beside-exe storage is unavailable or installs already live only under app data, Maguna uses **`%APPDATA%\com.helvety.maguna\maguna\models`** (Tauri’s `app_data_dir` is Roaming **`AppData`, not `Local`**).
+- **macOS** — normally **`Maguna.app/Models`** next to `Contents` inside the `.app` bundle (for example `/Applications/Maguna.app/Models`). Otherwise **`~/Library/Application Support/com.helvety.maguna/maguna/models`**.
+
+While catalog models **download**, the partial file is written under **`%APPDATA%\com.helvety.maguna\maguna\tmp\`** on Windows (**`~/Library/Application Support/.../maguna/tmp/`** on macOS); after the HTTP stream completes, Maguna moves or copies into **`Models`** (which can take a long time across drives—the UI keeps a separate **Finishing install** step).
+
+In **Model library → Installed models**, use **Open models folder** for the **active** weights directory File Explorer / Finder should open (**not** necessarily the tmp folder above).
+
 ### Scripts
 
 | Command                 | Purpose                                                                                                                                       |
