@@ -1,0 +1,67 @@
+mod catalog;
+#[cfg(feature = "llama")]
+mod chat_template;
+mod commands;
+mod download;
+mod error;
+mod inference;
+mod modes;
+mod paths;
+mod prompts;
+mod state;
+mod storage;
+
+use tauri::Manager;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+use crate::state::AppState;
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let _ = tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .try_init();
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            app.manage(AppState::new(&handle));
+
+            #[cfg(feature = "llama")]
+            {
+                let state = app.state::<AppState>();
+                if let Some(id) = state.get_active_id() {
+                    if state.load_model_for_id(&handle, &id).is_err() {
+                        let _ = state.set_active_id(&handle, None);
+                    }
+                }
+            }
+
+            if let Ok(root) = paths::maguna_root(&handle) {
+                let _ = std::fs::create_dir_all(&root);
+            }
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::inference_backend_info,
+            commands::get_catalog,
+            commands::list_installed_models,
+            commands::get_active_model_id,
+            commands::set_active_model,
+            commands::delete_model,
+            commands::download_model,
+            commands::import_gguf,
+            commands::cancel_generation,
+            commands::get_modes,
+            commands::set_modes,
+            commands::delete_mode,
+            commands::reset_mode_to_default,
+            commands::run_mode,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}

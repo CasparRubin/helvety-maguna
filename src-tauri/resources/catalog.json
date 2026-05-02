@@ -1,0 +1,149 @@
+{
+  "version": 1,
+  "models": [
+    {
+      "id": "tinyllama-1.1b-chat-q4km",
+      "display_name": "TinyLlama 1.1B Chat (Q4_K_M)",
+      "description": "Smallest option (~650 MB). Smoke tests only; use Llama 3.2 or Mistral for real EN/DE work.",
+      "url": "https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 668000000,
+      "languages": ["en", "de"],
+      "license_note": "Apache-2.0 (TinyLlama weights)",
+      "hf_repo": "TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
+      "chat_template": "tinyllama_v1"
+    },
+    {
+      "id": "llama-3.2-3b-instruct-q4km",
+      "display_name": "Llama 3.2 3B Instruct (Q4_K_M)",
+      "description": "Strong default (~1.9 GB): good instruction following for English and German. Llama Community License.",
+      "url": "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 2019377696,
+      "languages": ["en", "de"],
+      "license_note": "Llama 3.2 Community License Agreement — see HF model card.",
+      "hf_repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+      "chat_template": "llama3_instruct"
+    },
+    {
+      "id": "mistral-7b-instruct-v03-q4km",
+      "display_name": "Mistral 7B Instruct v0.3 (Q4_K_M)",
+      "description": "Mistral AI 7B instruct (~4.1 GB). Excellent EN/DE; Apache-2.0 weights.",
+      "url": "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 4372812000,
+      "languages": ["en", "de"],
+      "license_note": "Apache-2.0 — see Mistral model card on Hugging Face.",
+      "hf_repo": "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
+      "chat_template": "mistral_instruct"
+    },
+    {
+      "id": "mistral-7b-instruct-v03-q5km",
+      "display_name": "Mistral 7B Instruct v0.3 (Q5_K_M)",
+      "description": "Same model as Q4_K_M with higher bit depth (~4.8 GB). Slightly sharper at the cost of disk and RAM.",
+      "url": "https://huggingface.co/bartowski/Mistral-7B-Instruct-v0.3-GGUF/resolve/main/Mistral-7B-Instruct-v0.3-Q5_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 5136175328,
+      "languages": ["en", "de"],
+      "license_note": "Apache-2.0 — see Mistral model card on Hugging Face.",
+      "hf_repo": "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
+      "chat_template": "mistral_instruct"
+    },
+    {
+      "id": "deepseek-r1-distill-llama-8b-q4km",
+      "display_name": "DeepSeek R1 Distill Llama 8B (Q4_K_M)",
+      "description": "DeepSeek R1 reasoning style distilled into Llama 8B (~4.6 GB). Uses Llama-3-style chat tokens in GGUF; MIT license.",
+      "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 4920736608,
+      "languages": ["en", "de"],
+      "license_note": "MIT — DeepSeek R1 distill; see HF model card.",
+      "hf_repo": "bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
+      "chat_template": "llama3_instruct"
+    },
+    {
+      "id": "deepseek-r1-distill-llama-8b-q5km",
+      "display_name": "DeepSeek R1 Distill Llama 8B (Q5_K_M)",
+      "description": "Higher bit depth (~5.3 GB). Strong EN/DE; may be verbose for short spelling fixes.",
+      "url": "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF/resolve/main/DeepSeek-R1-Distill-Llama-8B-Q5_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 5732989792,
+      "languages": ["en", "de"],
+      "license_note": "MIT — DeepSeek R1 distill; see HF model card.",
+      "hf_repo": "bartowski/DeepSeek-R1-Distill-Llama-8B-GGUF",
+      "chat_template": "llama3_instruct"
+    },
+    {
+      "id": "qwen2.5-7b-instruct-q4km",
+      "display_name": "Qwen 2.5 7B Instruct (Q4_K_M)",
+      "description": "Alibaba Qwen 2.5 7B instruct (~4.7 GiB). Strong multilingual (EN/DE/ZH); Apache-2.0 weights.",
+      "url": "https://huggingface.co/bartowski/Qwen2.5-7B-Instruct-GGUF/resolve/main/Qwen2.5-7B-Instruct-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 5025111736,
+      "languages": ["en", "de", "zh"],
+      "license_note": "Apache-2.0 — Qwen2.5; see Alibaba model card on Hugging Face.",
+      "hf_repo": "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "chat_template": "qwen2_instruct"
+    },
+    {
+      "id": "qwen2.5-14b-instruct-q4km",
+      "display_name": "Qwen 2.5 14B Instruct (Q4_K_M)",
+      "description": "Larger Qwen 2.5 instruct (~8.99 GiB). Best quality in this catalog under ~10 GiB single-file; needs more RAM/VRAM.",
+      "url": "https://huggingface.co/bartowski/Qwen2.5-14B-Instruct-GGUF/resolve/main/Qwen2.5-14B-Instruct-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 9652938998,
+      "languages": ["en", "de", "zh"],
+      "license_note": "Apache-2.0 — Qwen2.5; see Alibaba model card on Hugging Face.",
+      "hf_repo": "bartowski/Qwen2.5-14B-Instruct-GGUF",
+      "chat_template": "qwen2_instruct"
+    },
+    {
+      "id": "qwen2.5-coder-7b-instruct-q4km",
+      "display_name": "Qwen 2.5 Coder 7B Instruct (Q4_K_M)",
+      "description": "Code-focused Qwen 2.5 7B (~4.7 GiB). Same ChatML framing as general Qwen2.5 instruct; Apache-2.0.",
+      "url": "https://huggingface.co/bartowski/Qwen2.5-Coder-7B-Instruct-GGUF/resolve/main/Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 5025111736,
+      "languages": ["en", "de", "zh"],
+      "license_note": "Apache-2.0 — Qwen2.5-Coder; see Alibaba model card on Hugging Face.",
+      "hf_repo": "bartowski/Qwen2.5-Coder-7B-Instruct-GGUF",
+      "chat_template": "qwen2_instruct"
+    },
+    {
+      "id": "gemma-2-2b-it-q4km",
+      "display_name": "Gemma 2 2B IT (Q4_K_M)",
+      "description": "Google Gemma 2 instruction-tuned 2B (~1.7 GiB). Fast and lightweight; Gemma license terms on HF.",
+      "url": "https://huggingface.co/bartowski/gemma-2-2b-it-GGUF/resolve/main/gemma-2-2b-it-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 1836098519,
+      "languages": ["en", "de"],
+      "license_note": "Gemma license — see Google Gemma terms on Hugging Face model card.",
+      "hf_repo": "bartowski/gemma-2-2b-it-GGUF",
+      "chat_template": "gemma2_it"
+    },
+    {
+      "id": "gemma-2-9b-it-q4km",
+      "display_name": "Gemma 2 9B IT (Q4_K_M)",
+      "description": "Google Gemma 2 9B instruction-tuned (~5.8 GiB). Strong general instruct; Gemma license terms on HF.",
+      "url": "https://huggingface.co/bartowski/gemma-2-9b-it-GGUF/resolve/main/gemma-2-9b-it-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 6184752906,
+      "languages": ["en", "de"],
+      "license_note": "Gemma license — see Google Gemma terms on Hugging Face model card.",
+      "hf_repo": "bartowski/gemma-2-9b-it-GGUF",
+      "chat_template": "gemma2_it"
+    },
+    {
+      "id": "moonlight-16b-a3b-instruct-q4ks",
+      "display_name": "Moonlight 16B A3B Instruct (Q4_K_S)",
+      "description": "Moonshot AI Moonlight MoE: ~3B active params, 16B total (~9.0 GiB single GGUF). Same Moonshot `im_*` chat layout as Kimi K2 in llama.cpp. MIT; MoE needs sufficient RAM.",
+      "url": "https://huggingface.co/gabriellarson/Moonlight-16B-A3B-Instruct-GGUF/resolve/main/Moonlight-16B-A3B-Instruct-Q4_K_S.gguf",
+      "sha256": null,
+      "size_bytes": 9713879648,
+      "languages": ["en", "de", "zh"],
+      "license_note": "MIT — moonshotai/Moonlight-16B-A3B-Instruct; GGUF by gabriellarson.",
+      "hf_repo": "gabriellarson/Moonlight-16B-A3B-Instruct-GGUF",
+      "chat_template": "moonshot_instruct"
+    }
+  ]
+}

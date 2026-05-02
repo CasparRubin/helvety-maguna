@@ -1,0 +1,40 @@
+[package]
+name = "maguna"
+version = "0.1.0"
+description = "Maguna — local GGUF harness with user-defined modes"
+authors = ["Helvety"]
+edition = "2021"
+
+[features]
+default = []
+# Enables on-device GGUF inference via llama.cpp (requires LLVM libclang on the build machine).
+llama = ["dep:llama_cpp"]
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "tauri_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "fs", "io-util"] }
+reqwest = { version = "0.12", features = ["stream", "rustls-tls"] }
+futures-util = "0.3"
+sha2 = "0.10"
+hex = "0.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+llama_cpp = { version = "0.3.2", default-features = true, optional = true }
+parking_lot = "0.12"
+
