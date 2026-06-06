@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import { compactModelDisplayName } from "@/lib/model-display";
 
 describe("compactModelDisplayName", () => {
-  it("keeps shipped catalog v5 display names unchanged", () => {
+  it("keeps shipped catalog v6 display names unchanged", () => {
+    expect(compactModelDisplayName("Phi-4 mini")).toBe("Phi-4 mini");
+    expect(compactModelDisplayName("Hunyuan-MT 7B")).toBe("Hunyuan-MT 7B");
+    expect(compactModelDisplayName("Qwen 3.5 9B")).toBe("Qwen 3.5 9B");
+    expect(compactModelDisplayName("Qwen 3.6 27B")).toBe("Qwen 3.6 27B");
     expect(compactModelDisplayName("Qwen 3 14B")).toBe("Qwen 3 14B");
-    expect(compactModelDisplayName("Qwen 3 8B")).toBe("Qwen 3 8B");
     expect(compactModelDisplayName("Gemma 4 12B")).toBe("Gemma 4 12B");
     expect(compactModelDisplayName("Ministral 3 8B")).toBe("Ministral 3 8B");
     expect(compactModelDisplayName("DeepSeek R1 Distill Qwen 7B")).toBe(

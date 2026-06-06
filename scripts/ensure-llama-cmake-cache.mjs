@@ -14,6 +14,10 @@ const root = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../src-tauri/target/llama-cmake-cache",
 );
+const releaseLlamaBuildGlob = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../src-tauri/target/release/build",
+);
 
 function parseDeploymentTarget(line) {
   const m = line.match(/^CMAKE_OSX_DEPLOYMENT_TARGET:STRING=(.+)$/);
@@ -21,15 +25,28 @@ function parseDeploymentTarget(line) {
 }
 
 function isStale(deploy) {
-  if (!deploy) return false;
-  const [maj, min = "0"] = deploy.split(".");
-  const [wantMaj, wantMin = "0"] = MIN_DEPLOY.split(".");
-  const major = Number(maj);
-  const minor = Number(min);
-  const wantMajor = Number(wantMaj);
-  const wantMinor = Number(wantMin);
-  if (Number.isNaN(major) || Number.isNaN(minor)) return false;
-  return major < wantMajor || (major === wantMajor && minor < wantMinor);
+  if (process.platform !== "darwin") return false;
+  if (!deploy) return true;
+  return deploy !== MIN_DEPLOY;
+}
+
+async function purgeReleaseLlamaBuildArtifacts() {
+  if (process.platform !== "darwin") return;
+  let entries;
+  try {
+    entries = await readdir(releaseLlamaBuildGlob, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name.startsWith("llama-cpp-sys-")) {
+      const dir = path.join(releaseLlamaBuildGlob, entry.name);
+      console.warn(
+        `Removing release llama-cpp-sys build dir (${dir}) after stale cmake cache`,
+      );
+      await rm(dir, { recursive: true, force: true });
+    }
+  }
 }
 
 try {
@@ -37,6 +54,8 @@ try {
 } catch {
   process.exit(0);
 }
+
+let removedAny = false;
 
 for (const entry of await readdir(root, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
@@ -52,13 +71,22 @@ for (const entry of await readdir(root, { withFileTypes: true })) {
       }
     }
   } catch {
-    continue;
+    if (process.platform === "darwin") {
+      deploy = null;
+    } else {
+      continue;
+    }
   }
   if (isStale(deploy)) {
     const dir = path.join(root, entry.name);
     console.warn(
-      `Removing stale llama-cpp cmake cache (${dir}, CMAKE_OSX_DEPLOYMENT_TARGET=${deploy}; need >= ${MIN_DEPLOY})`,
+      `Removing stale llama-cpp cmake cache (${dir}, CMAKE_OSX_DEPLOYMENT_TARGET=${deploy ?? "unset"}; need ${MIN_DEPLOY})`,
     );
     await rm(dir, { recursive: true, force: true });
+    removedAny = true;
   }
+}
+
+if (removedAny) {
+  await purgeReleaseLlamaBuildArtifacts();
 }

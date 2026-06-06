@@ -2,7 +2,7 @@
   "name": "maguna",
   "description": "Tauri desktop app (Helvety Maguna) for GGUF models — catalog, download, import, on-device inference (Chat, correction/translate, custom modes), per-mode prompts and model bindings, always-on output guardrails (optional custom policy text), Settings (terms, acceptable use, disclaimers), archives in localStorage, light/dark theme, copy controls",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "packageManager": "bun@1.3.14",
   "engines": {
@@ -17,6 +17,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "build:app": "node scripts/ensure-llama-cmake-cache.mjs && node scripts/tauri-build.mjs",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/build-windows.ps1",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -25,6 +26,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml --no-default-features",
+    "check:rust:llama": "node scripts/ensure-llama-cmake-cache.mjs && cargo test --manifest-path src-tauri/Cargo.toml --features llama chat_template",
     "check": "bun run format:check && bun run lint && bun run test && bun run build && bun run check:rust"
   },
   "dependencies": {

@@ -37,3 +37,7 @@ jobs:
 
       - name: Format, lint, test, build (frontend + Rust)
         run: bun run check
+
+      - name: Rust chat template tests (llama, macOS)
+        if: matrix.os == 'macos-latest'
+        run: bun run check:rust:llama

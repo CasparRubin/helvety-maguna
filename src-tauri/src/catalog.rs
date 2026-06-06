@@ -23,8 +23,9 @@ pub struct CatalogModel {
     pub license_note: String,
     pub hf_repo: String,
     /// Chat framing key (`chat_template`): `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`,
-    /// `qwen2_instruct`, `gemma2_it`, `mistral3_instruct`, `moonshot_instruct` (`kimi_k2`/`kimi` aliases), etc.—must match
-    /// the instruct GGUF layout.
+    /// `qwen2_instruct`, `qwen2_instruct_reasoning`, `gemma2_it`, `gemma4_it`, `mistral3_instruct`,
+    /// `moonshot_instruct`, `phi4_instruct`, `hunyuan_dense` (`kimi_k2`/`kimi` aliases), etc.—must
+    /// match the instruct GGUF layout.
     #[serde(default = "default_chat_template")]
     pub chat_template: String,
     /// Public release of this checkpoint family (`YYYY-MM-DD`), from upstream cards; optional.
@@ -63,11 +64,13 @@ mod tests {
         "mistral-7b-instruct-v03-q4km",
     ];
 
+    const LEGACY_V5_IDS: &[&str] = &["qwen3-8b-q4km"];
+
     #[test]
-    fn bundled_catalog_is_version_5_with_five_models() {
+    fn bundled_catalog_is_version_6_with_eight_models() {
         let cat = load_catalog().expect("embedded catalog.json");
-        assert_eq!(cat.version, 5);
-        assert_eq!(cat.models.len(), 5);
+        assert_eq!(cat.version, 6);
+        assert_eq!(cat.models.len(), 8);
     }
 
     #[test]
@@ -87,26 +90,54 @@ mod tests {
     }
 
     #[test]
-    fn catalog_v5_ids_and_templates() {
-        let qwen3 = find_catalog_model("qwen3-14b-q4km").expect("qwen3 14b");
-        assert_eq!(qwen3.chat_template, "qwen2_instruct");
-        assert_eq!(qwen3.size_bytes, 9_001_753_632);
+    fn catalog_dropped_legacy_v5_ids() {
+        let ids: Vec<String> = load_catalog()
+            .expect("catalog")
+            .models
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        for legacy in LEGACY_V5_IDS {
+            assert!(
+                !ids.iter().any(|id| id == legacy),
+                "legacy id still in catalog: {legacy}"
+            );
+        }
+    }
 
-        let gemma4 = find_catalog_model("gemma-4-12b-it-q4km").expect("gemma4");
-        assert_eq!(gemma4.chat_template, "gemma2_it");
-        assert_eq!(gemma4.size_bytes, 7_381_382_048);
+    #[test]
+    fn catalog_v6_ids_and_templates() {
+        let phi4 = find_catalog_model("phi-4-mini-instruct-q4km").expect("phi4 mini");
+        assert_eq!(phi4.chat_template, "phi4_instruct");
+        assert_eq!(phi4.size_bytes, 2_491_874_688);
+
+        let deepseek = find_catalog_model("deepseek-r1-distill-qwen-7b-q4km").expect("deepseek");
+        assert_eq!(deepseek.chat_template, "qwen2_instruct_reasoning");
+        assert_eq!(deepseek.size_bytes, 4_683_073_504);
+
+        let hunyuan = find_catalog_model("hunyuan-mt-7b-q4km").expect("hunyuan mt");
+        assert_eq!(hunyuan.chat_template, "hunyuan_dense");
+        assert_eq!(hunyuan.size_bytes, 4_702_111_200);
 
         let ministral = find_catalog_model("ministral-3-8b-instruct-q4km").expect("ministral3");
         assert_eq!(ministral.chat_template, "mistral3_instruct");
         assert_eq!(ministral.size_bytes, 5_198_387_456);
 
-        let deepseek = find_catalog_model("deepseek-r1-distill-qwen-7b-q4km").expect("deepseek");
-        assert_eq!(deepseek.chat_template, "qwen2_instruct");
-        assert_eq!(deepseek.size_bytes, 4_683_073_504);
+        let qwen35 = find_catalog_model("qwen3.5-9b-q4km").expect("qwen3.5 9b");
+        assert_eq!(qwen35.chat_template, "qwen2_instruct");
+        assert_eq!(qwen35.size_bytes, 6_169_341_984);
 
-        let qwen3_8b = find_catalog_model("qwen3-8b-q4km").expect("qwen3 8b");
-        assert_eq!(qwen3_8b.chat_template, "qwen2_instruct");
-        assert_eq!(qwen3_8b.size_bytes, 5_027_784_224);
+        let gemma4 = find_catalog_model("gemma-4-12b-it-q4km").expect("gemma4");
+        assert_eq!(gemma4.chat_template, "gemma4_it");
+        assert_eq!(gemma4.size_bytes, 7_381_382_048);
+
+        let qwen3 = find_catalog_model("qwen3-14b-q4km").expect("qwen3 14b");
+        assert_eq!(qwen3.chat_template, "qwen2_instruct");
+        assert_eq!(qwen3.size_bytes, 9_001_753_632);
+
+        let qwen36 = find_catalog_model("qwen3.6-27b-q4km").expect("qwen3.6 27b");
+        assert_eq!(qwen36.chat_template, "qwen2_instruct");
+        assert_eq!(qwen36.size_bytes, 16_547_398_784);
     }
 
     #[test]
@@ -117,11 +148,14 @@ mod tests {
         assert_eq!(
             ids,
             [
+                "phi-4-mini-instruct-q4km",
                 "deepseek-r1-distill-qwen-7b-q4km",
-                "qwen3-8b-q4km",
+                "hunyuan-mt-7b-q4km",
                 "ministral-3-8b-instruct-q4km",
+                "qwen3.5-9b-q4km",
                 "gemma-4-12b-it-q4km",
                 "qwen3-14b-q4km",
+                "qwen3.6-27b-q4km",
             ]
         );
     }

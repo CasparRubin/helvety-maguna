@@ -4,8 +4,14 @@
 //! built-in or custom text) plus mode-specific prose from [`crate::modes::ModeDefinition`] (defaults in [`crate::prompts`],
 //! overrides in `modes.json`).
 //!
-//! Qwen2.x / Qwen3 uses ChatML (`im_start` / `im_end`). Gemma 2/4 IT uses `<start_of_turn>` turns.
+//! Qwen2.x / Qwen3 / Qwen3.5 / Qwen3.6 instruct uses ChatML (`im_start` / `im_end`) with thinking
+//! disabled via an empty `think` block before generation (matches `enable_thinking=false`).
+//! DeepSeek-R1 distill uses the same ChatML layout but keeps thinking enabled (`qwen2_instruct_reasoning`).
 //! Ministral 3 and Moonshot Moonlight / Kimi K2 use `im_system` / `im_user` / `im_middle` tokens.
+//! Google Gemma 2 uses `<start_of_turn>` turns; Gemma 4 uses `<|turn>` / `<turn|>` with an empty
+//! `<|channel>thought` / `<channel|>` prefix when thinking is off.
+//! Microsoft Phi-4 mini uses `<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`.
+//! Tencent Hunyuan dense uses `<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`.
 //!
 //! Filename / display-name hints (used for GGUF imports) are always compiled.
 //! The resolved enum is compiled with the `llama` feature. `ChatTemplate::format_prompt` wraps
@@ -21,8 +27,20 @@ pub fn try_catalog_template_key_from_hint(hint: &str) -> Option<&'static str> {
     if lower.contains("mistral") {
         return Some("mistral_instruct");
     }
+    if lower.contains("hunyuan") {
+        return Some("hunyuan_dense");
+    }
+    if lower.contains("phi-4") || lower.contains("phi4") || lower.contains("phi_4") {
+        return Some("phi4_instruct");
+    }
+    if lower.contains("deepseek-r1") || lower.contains("deepseek_r1") {
+        return Some("qwen2_instruct_reasoning");
+    }
     if lower.contains("qwen") {
         return Some("qwen2_instruct");
+    }
+    if lower.contains("gemma-4") || lower.contains("gemma4") || lower.contains("gemma_4") {
+        return Some("gemma4_it");
     }
     if lower.contains("gemma") {
         return Some("gemma2_it");
@@ -35,8 +53,6 @@ pub fn try_catalog_template_key_from_hint(hint: &str) -> Option<&'static str> {
         || lower.contains("llama_3.2")
         || lower.contains("llama-3-")
         || lower.contains("meta-llama-3")
-        || lower.contains("deepseek-r1")
-        || lower.contains("deepseek_r1")
     {
         return Some("llama3_instruct");
     }
@@ -70,14 +86,88 @@ pub enum ChatTemplate {
     TinyLlamaV1,
     Llama3Instruct,
     MistralInstruct,
-    /// Qwen2 / Qwen2.5 / Qwen3 instruct (ChatML).
+    /// Qwen2 / Qwen2.5 / Qwen3 / Qwen3.5 / Qwen3.6 instruct (ChatML, thinking disabled).
     QwenChatMl,
-    /// Google Gemma 2 / Gemma 4 instruction-tuned (`assistant` → `model` turn).
+    /// Qwen ChatML with thinking enabled (DeepSeek-R1 distill and similar reasoning models).
+    QwenChatMlReasoning,
+    /// Google Gemma 2 instruction-tuned (`start_of_turn` / `end_of_turn`).
     Gemma2It,
+    /// Google Gemma 4 instruction-tuned (`<|turn>` / `<turn|>` + channel prefix).
+    Gemma4It,
     /// Mistral 3 / Ministral instruct (mistral-common token layout).
     Mistral3Instruct,
     /// Moonshot Moonlight, Kimi K2 instruct, and same token layout as llama.cpp `kimi-k2`.
     KimiMoonshot,
+    /// Microsoft Phi-4 mini instruct (`<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`).
+    Phi4Instruct,
+    /// Tencent Hunyuan dense / Hunyuan-MT (`<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`).
+    HunyuanDense,
+}
+
+#[cfg(feature = "llama")]
+fn qwen_chatml_assistant_gen_prefix(disable_thinking: bool) -> String {
+    const IM_START: &str = concat!("<|", "im_start", "|>");
+    if !disable_thinking {
+        return format!("{IM_START}assistant\n");
+    }
+    const THINK_OPEN: &str = concat!("<", "think", ">");
+    const THINK_CLOSE: &str = concat!("</", "think", ">");
+    // Qwen3+ `enable_thinking=false`: closed empty think block before generation.
+    format!("{IM_START}assistant\n{THINK_OPEN}\n\n{THINK_CLOSE}\n\n")
+}
+
+#[cfg(feature = "llama")]
+fn qwen_chatml_assistant_history(text: &str, disable_thinking: bool) -> String {
+    const IM_START: &str = concat!("<|", "im_start", "|>");
+    const IM_END: &str = concat!("<|", "im_end", "|>");
+    if disable_thinking {
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        const THINK_CLOSE: &str = concat!("</", "think", ">");
+        format!("{IM_START}assistant\n{THINK_OPEN}\n\n{THINK_CLOSE}\n\n{text}{IM_END}\n")
+    } else {
+        format!("{IM_START}assistant\n{text}{IM_END}\n")
+    }
+}
+
+#[cfg(feature = "llama")]
+const GEMMA4_MODEL_GEN_PREFIX: &str = "<|turn>model\n<|channel>thought\n<channel|>";
+
+#[cfg(feature = "llama")]
+fn gemma4_assistant_history(text: &str) -> String {
+    format!("<|turn>model\n<|channel>thought\n<channel|>{text}<turn|>\n")
+}
+
+#[cfg(feature = "llama")]
+fn format_qwen_chatml_prompt(system: &str, user: &str, disable_thinking: bool) -> String {
+    const IM_START: &str = concat!("<|", "im_start", "|>");
+    const IM_END: &str = concat!("<|", "im_end", "|>");
+    format!(
+        "{IM_START}system\n{system}{IM_END}\n{IM_START}user\n{user}{IM_END}\n{}",
+        qwen_chatml_assistant_gen_prefix(disable_thinking)
+    )
+}
+
+#[cfg(feature = "llama")]
+fn format_qwen_chatml_chat(
+    system: &str,
+    pieces: &[(ChatPieceRole, &str)],
+    disable_thinking: bool,
+) -> String {
+    const IM_START: &str = concat!("<|", "im_start", "|>");
+    const IM_END: &str = concat!("<|", "im_end", "|>");
+    let mut s = format!("{IM_START}system\n{system}{IM_END}\n");
+    for &(role, text) in pieces {
+        match role {
+            ChatPieceRole::User => {
+                s.push_str(&format!("{IM_START}user\n{text}{IM_END}\n"));
+            }
+            ChatPieceRole::Assistant => {
+                s.push_str(&qwen_chatml_assistant_history(text, disable_thinking));
+            }
+        }
+    }
+    s.push_str(&qwen_chatml_assistant_gen_prefix(disable_thinking));
+    s
 }
 
 #[cfg(feature = "llama")]
@@ -97,10 +187,12 @@ impl ChatTemplate {
             "mistral" | "mistral_instruct" => Self::MistralInstruct,
             "mistral3_instruct" | "mistral3" | "ministral" => Self::Mistral3Instruct,
             "qwen2_instruct" | "qwen_instruct" | "qwen_chatml" | "chatml" => Self::QwenChatMl,
-            "gemma2_it" | "gemma2" | "gemma4_it" | "gemma4" | "gemma_it" | "gemma" => {
-                Self::Gemma2It
-            }
+            "qwen2_instruct_reasoning" | "qwen_reasoning" => Self::QwenChatMlReasoning,
+            "gemma2_it" | "gemma2" | "gemma_it" => Self::Gemma2It,
+            "gemma4_it" | "gemma4" => Self::Gemma4It,
             "moonshot_instruct" | "kimi_k2" | "kimi" | "moonlight" => Self::KimiMoonshot,
+            "phi4_instruct" | "phi4" | "phi-4" | "phi_4" => Self::Phi4Instruct,
+            "hunyuan_dense" | "hunyuan" | "hunyuan-dense" => Self::HunyuanDense,
             _ => Self::TinyLlamaV1,
         }
     }
@@ -112,16 +204,15 @@ impl ChatTemplate {
     }
 
     pub fn format_prompt(self, system: &str, user: &str) -> String {
-        const IM_START: &str = concat!("<|", "im_start", "|>");
         const IM_END: &str = concat!("<|", "im_end", "|>");
         const K_SYS: &str = concat!("<|", "im_system", "|>system<|", "im_middle", "|>");
         const K_USER: &str = concat!("<|", "im_user", "|>user<|", "im_middle", "|>");
         const K_ASST: &str = concat!("<|", "im_assistant", "|>assistant<|", "im_middle", "|>");
 
         match self {
-            Self::TinyLlamaV1 => format!(
-                "<|system|>\n{system}</s>\n<|user|>\n{user}</s>\n<|assistant|>\n"
-            ),
+            Self::TinyLlamaV1 => {
+                format!("<|system|>\n{system}</s>\n<|user|>\n{user}</s>\n<|assistant|>\n")
+            }
             Self::Llama3Instruct => {
                 const SH: &str = concat!("<|", "start_header_id", "|>");
                 const EH: &str = concat!("<|", "end_header_id", "|>");
@@ -134,22 +225,27 @@ impl ChatTemplate {
                 // Mistral 7B Instruct: single [INST] block (system + user), then assistant generation.
                 format!("<s>[INST] {system}\n\n{user} [/INST]")
             }
-            Self::QwenChatMl => format!(
-                "{IM_START}system\n{system}{IM_END}\n{IM_START}user\n{user}{IM_END}\n{IM_START}assistant\n"
-            ),
+            Self::QwenChatMl => format_qwen_chatml_prompt(system, user, true),
+            Self::QwenChatMlReasoning => format_qwen_chatml_prompt(system, user, false),
             Self::Gemma2It => format!(
                 "<start_of_turn>user\n{system}\n\n{user}<end_of_turn>\n<start_of_turn>model\n"
             ),
+            Self::Gemma4It => {
+                format!("<|turn>user\n{system}\n\n{user}<turn|>\n{GEMMA4_MODEL_GEN_PREFIX}")
+            }
             Self::Mistral3Instruct | Self::KimiMoonshot => {
                 format!("{K_SYS}{system}{IM_END}{K_USER}{user}{IM_END}{K_ASST}")
             }
+            Self::Phi4Instruct => {
+                format!("<|system|>{system}<|end|><|user|>{user}<|end|><|assistant|>")
+            }
+            Self::HunyuanDense => format!("<|startoftext|>{system}<|extra_4|>{user}<|extra_0|>"),
         }
     }
 
     /// Multi-turn: `pieces` must start with `User` and alternate; the last piece is the latest user
     /// message to answer. Output ends with an open assistant generation prefix.
     pub fn format_prompt_chat(self, system: &str, pieces: &[(ChatPieceRole, &str)]) -> String {
-        const IM_START: &str = concat!("<|", "im_start", "|>");
         const IM_END: &str = concat!("<|", "im_end", "|>");
         const K_SYS: &str = concat!("<|", "im_system", "|>system<|", "im_middle", "|>");
         const K_USER: &str = concat!("<|", "im_user", "|>user<|", "im_middle", "|>");
@@ -216,21 +312,8 @@ impl ChatTemplate {
                 }
                 out
             }
-            Self::QwenChatMl => {
-                let mut s = format!("{IM_START}system\n{system}{IM_END}\n");
-                for &(role, text) in pieces {
-                    match role {
-                        ChatPieceRole::User => {
-                            s.push_str(&format!("{IM_START}user\n{text}{IM_END}\n"));
-                        }
-                        ChatPieceRole::Assistant => {
-                            s.push_str(&format!("{IM_START}assistant\n{text}{IM_END}\n"));
-                        }
-                    }
-                }
-                s.push_str(&format!("{IM_START}assistant\n"));
-                s
-            }
+            Self::QwenChatMl => format_qwen_chatml_chat(system, pieces, true),
+            Self::QwenChatMlReasoning => format_qwen_chatml_chat(system, pieces, false),
             Self::Gemma2It => {
                 let mut s = String::new();
                 for (idx, &(role, text)) in pieces.iter().enumerate() {
@@ -252,6 +335,25 @@ impl ChatTemplate {
                 s.push_str("<start_of_turn>model\n");
                 s
             }
+            Self::Gemma4It => {
+                let mut s = String::new();
+                for (idx, &(role, text)) in pieces.iter().enumerate() {
+                    match role {
+                        ChatPieceRole::User => {
+                            if idx == 0 {
+                                s.push_str(&format!("<|turn>user\n{system}\n\n{text}<turn|>\n"));
+                            } else {
+                                s.push_str(&format!("<|turn>user\n{text}<turn|>\n"));
+                            }
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&gemma4_assistant_history(text));
+                        }
+                    }
+                }
+                s.push_str(GEMMA4_MODEL_GEN_PREFIX);
+                s
+            }
             Self::Mistral3Instruct | Self::KimiMoonshot => {
                 let mut s = format!("{K_SYS}{system}{IM_END}");
                 for &(role, text) in pieces {
@@ -267,6 +369,39 @@ impl ChatTemplate {
                 s.push_str(K_ASST);
                 s
             }
+            Self::Phi4Instruct => {
+                let mut s = format!("<|system|>{system}<|end|>");
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => {
+                            s.push_str(&format!("<|user|>{text}<|end|>"));
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&format!("<|assistant|>{text}<|end|>"));
+                        }
+                    }
+                }
+                s.push_str("<|assistant|>");
+                s
+            }
+            Self::HunyuanDense => {
+                let mut s = format!("<|startoftext|>{system}<|extra_4|>");
+                for (idx, &(role, text)) in pieces.iter().enumerate() {
+                    match role {
+                        ChatPieceRole::User => {
+                            if idx == 0 {
+                                s.push_str(&format!("{text}<|extra_0|>"));
+                            } else {
+                                s.push_str(&format!("<|startoftext|>{text}<|extra_0|>"));
+                            }
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&format!("{text}<|eos|>"));
+                        }
+                    }
+                }
+                s
+            }
         }
     }
 }
@@ -274,6 +409,57 @@ impl ChatTemplate {
 #[cfg(all(test, feature = "llama"))]
 mod llama_chat_template_tests {
     use super::{ChatPieceRole, ChatTemplate};
+
+    #[test]
+    fn gemma4_it_single_turn_uses_turn_and_empty_channel() {
+        let p = ChatTemplate::Gemma4It.format_prompt("SYS", "hello");
+        assert_eq!(
+            p,
+            "<|turn>user\nSYS\n\nhello<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
+        );
+    }
+
+    #[test]
+    fn qwen_chatml_multi_turn_history_includes_empty_think_blocks() {
+        let t = ChatTemplate::QwenChatMl;
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "hello"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = t.format_prompt_chat("SYS", &pieces);
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        const THINK_CLOSE: &str = concat!("</", "think", ">");
+        assert!(
+            p.contains(&format!("{THINK_OPEN}\n\n{THINK_CLOSE}\n\nhello")),
+            "{p}"
+        );
+        assert!(p.contains("second"));
+    }
+
+    #[test]
+    fn gemma4_it_chat_continues_turns_with_channel_prefix() {
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::Gemma4It.format_prompt_chat("SYS", &pieces);
+        assert!(p.contains("first<turn|>"));
+        assert!(p.contains("<|channel>thought\n<channel|>reply<turn|>"));
+        assert!(p.contains("<|turn>user\nsecond<turn|>"));
+        assert!(p.ends_with("<|channel>thought\n<channel|>"));
+    }
+
+    #[test]
+    fn qwen_reasoning_chat_ends_with_open_assistant() {
+        let t = ChatTemplate::QwenChatMlReasoning;
+        let pieces = [(ChatPieceRole::User, "hi")];
+        let p = t.format_prompt_chat("SYS", &pieces);
+        assert!(p.ends_with("assistant\n"));
+        const THINK_CLOSE: &str = concat!("</", "think", ">");
+        assert!(!p.contains(THINK_CLOSE));
+    }
 
     #[test]
     fn llama3_chat_orders_headers_and_roles() {
@@ -302,11 +488,48 @@ mod llama_chat_template_tests {
         assert!(p.contains("Be nice"));
         assert!(p.contains("user"));
         assert!(p.contains("hallo"));
-        assert!(
-            p.contains("assistant\n") || p.ends_with("assistant"),
-            "{}",
-            p
-        );
+        const THINK_CLOSE: &str = concat!("</", "think", ">");
+        assert!(p.contains("assistant") && p.contains(THINK_CLOSE), "{}", p);
+    }
+
+    #[test]
+    fn phi4_instruct_single_turn_wraps_roles() {
+        let p = ChatTemplate::Phi4Instruct.format_prompt("SYS", "hello");
+        assert_eq!(p, "<|system|>SYS<|end|><|user|>hello<|end|><|assistant|>");
+    }
+
+    #[test]
+    fn phi4_instruct_chat_ends_with_assistant_prefix() {
+        let pieces = [
+            (ChatPieceRole::User, "hi"),
+            (ChatPieceRole::Assistant, "hello"),
+            (ChatPieceRole::User, "next"),
+        ];
+        let p = ChatTemplate::Phi4Instruct.format_prompt_chat("SYS", &pieces);
+        assert!(p.starts_with("<|system|>SYS<|end|>"));
+        assert!(p.contains("<|user|>hi<|end|>"));
+        assert!(p.contains("<|assistant|>hello<|end|>"));
+        assert!(p.ends_with("<|assistant|>"));
+    }
+
+    #[test]
+    fn hunyuan_dense_single_turn_wraps_system_and_user() {
+        let p = ChatTemplate::HunyuanDense.format_prompt("SYS", "hello");
+        assert_eq!(p, "<|startoftext|>SYS<|extra_4|>hello<|extra_0|>");
+    }
+
+    #[test]
+    fn hunyuan_dense_chat_continues_user_turns_with_startoftext() {
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::HunyuanDense.format_prompt_chat("SYS", &pieces);
+        assert!(p.starts_with("<|startoftext|>SYS<|extra_4|>"));
+        assert!(p.contains("first<|extra_0|>"));
+        assert!(p.contains("reply<|eos|>"));
+        assert!(p.contains("<|startoftext|>second<|extra_0|>"));
     }
 }
 
@@ -329,12 +552,16 @@ mod tests {
             "qwen2_instruct".to_string()
         );
         assert_eq!(
-            manifest_template_key_from_hints(["foobar", "gemma-story"]),
+            manifest_template_key_from_hints(["gemma-4-12B-it-Q4_K_M"]),
+            "gemma4_it".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["gemma-story"]),
             "gemma2_it".to_string()
         );
         assert_eq!(
-            manifest_template_key_from_hints(["gemma-4-12B-it-Q4_K_M"]),
-            "gemma2_it".to_string()
+            manifest_template_key_from_hints(["DeepSeek-R1-Distill-Qwen-7B-Q4_K_M"]),
+            "qwen2_instruct_reasoning".to_string()
         );
         assert_eq!(
             manifest_template_key_from_hints(["ministral-3-8b-instruct-q4km"]),
@@ -343,6 +570,14 @@ mod tests {
         assert_eq!(
             manifest_template_key_from_hints(["mistral-7b-instruct-v03-q4km"]),
             "mistral_instruct".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["microsoft_Phi-4-mini-instruct-Q4_K_M"]),
+            "phi4_instruct".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["Hunyuan-MT-7B-q4_k_m"]),
+            "hunyuan_dense".to_string()
         );
         assert!(manifest_template_key_from_hints(["zzz", "\n"]).is_empty());
     }

@@ -114,8 +114,8 @@ mod tests {
     #[test]
     fn catalog_download_partial_filename_shape() {
         assert_eq!(
-            super::catalog_download_partial_filename("qwen3-8b-q4km"),
-            "qwen3-8b-q4km.partial"
+            super::catalog_download_partial_filename("qwen3.5-9b-q4km"),
+            "qwen3.5-9b-q4km.partial"
         );
         // Legacy stems with dots still map 1:1 to `.partial` basenames.
         assert_eq!(

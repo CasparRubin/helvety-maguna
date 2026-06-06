@@ -1,6 +1,7 @@
 //! Spike-load a GGUF and emit a short greedy completion (engine smoke test).
 //!
 //! ```bash
+//! # Raw text works for smoke tests; instruct models expect a family-specific chat template.
 //! cargo run --example spike_load --features llama -- /path/to/model.gguf "Say hi in one word."
 //! ```
 use std::env;

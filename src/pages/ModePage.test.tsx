@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ModeDefinition } from "@/lib/types";
 import * as tauriApi from "@/lib/tauri-api";
+import { loadChatSessions, saveChatSessions } from "@/lib/chat-session-archive";
 
 import { ModePage } from "./ModePage";
 
@@ -90,6 +91,7 @@ describe("ModePage", () => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
     modesNavState.modes = [];
+    localStorage.clear();
   });
 
   it("Paste and run in chat invokes run_mode_chat with clipboard text", async () => {
@@ -326,5 +328,98 @@ describe("ModePage", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/^language in$/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/^language out$/i)).toBeInTheDocument();
+  });
+
+  it("Clear archive opens confirm dialog and deletes all chat sessions on confirm", async () => {
+    const modeId = "vitest-chat-clear";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Chat clear",
+        system_prompt: "",
+        prompt_layout: "chat",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    saveChatSessions(modeId, [
+      {
+        id: "session-1",
+        createdAt: 1,
+        updatedAt: 1,
+        title: "First chat",
+        messages: [{ role: "user", content: "hello" }],
+      },
+      {
+        id: "session-2",
+        createdAt: 2,
+        updatedAt: 2,
+        title: "Second chat",
+        messages: [{ role: "user", content: "world" }],
+      },
+    ]);
+
+    renderAtMode(`/mode/${modeId}`);
+
+    expect(await screen.findByText("First chat")).toBeInTheDocument();
+    expect(screen.getByText("Second chat")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /clear archive/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", { name: /clear archive\?/i }),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/delete all saved chats/i)).toBeInTheDocument();
+    expect(screen.getByText("First chat")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /delete all/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("First chat")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
+    expect(screen.getByText(/no saved chats yet/i)).toBeInTheDocument();
+    expect(loadChatSessions(modeId)).toEqual([]);
+  });
+
+  it("Clear archive confirm dialog Cancel keeps chat sessions", async () => {
+    const modeId = "vitest-chat-clear-cancel";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Chat clear cancel",
+        system_prompt: "",
+        prompt_layout: "chat",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    saveChatSessions(modeId, [
+      {
+        id: "session-keep",
+        createdAt: 1,
+        updatedAt: 1,
+        title: "Keep me",
+        messages: [{ role: "user", content: "stay" }],
+      },
+    ]);
+
+    renderAtMode(`/mode/${modeId}`);
+
+    expect(await screen.findByText("Keep me")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /clear archive/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^cancel$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Keep me")).toBeInTheDocument();
+    expect(loadChatSessions(modeId)).toHaveLength(1);
   });
 });

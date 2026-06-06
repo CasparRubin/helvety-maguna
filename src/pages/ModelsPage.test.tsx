@@ -320,7 +320,9 @@ describe("ModelsPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: /^Download$/i })).toHaveLength(5);
+      expect(screen.getAllByRole("button", { name: /^Download$/i })).toHaveLength(
+        SHIPPED_CATALOG.models.length,
+      );
     });
 
     const downloadButtons = screen.getAllByRole("button", { name: /^Download$/i });

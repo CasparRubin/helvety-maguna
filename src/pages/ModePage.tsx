@@ -14,7 +14,11 @@ import {
 } from "@/hooks/useInferenceListeners";
 import { useAutosizeTextarea } from "@/hooks/use-autosize-textarea";
 import { useModesNav } from "@/context/modes-nav-context";
-import { stripChatArtifacts } from "@/lib/inference-output";
+import {
+  stripChatArtifacts,
+  visibleInferenceOutput,
+  modelPreservesReasoningTrace,
+} from "@/lib/inference-output";
 import {
   clearChatSessions,
   loadChatSessions,
@@ -47,6 +51,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -83,6 +88,8 @@ const LANGS = [
 
 const DEFAULT_MODE_ROUTE = "/mode/chat";
 
+type ClearArchiveTarget = "chat" | "runs";
+
 function formatDurationMs(ms: number): string {
   if (ms < 1000) {
     return `${ms} ms`;
@@ -109,6 +116,8 @@ export function ModePage() {
   const [cancelling, setCancelling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [clearArchiveConfirm, setClearArchiveConfirm] =
+    useState<ClearArchiveTarget | null>(null);
   const [archive, setArchive] = useState<ModeRunArchiveEntry[]>([]);
 
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -122,6 +131,7 @@ export function ModePage() {
   const streamModeRef = useRef<"legacy" | "chat">("legacy");
   const userCancelledChatRef = useRef(false);
   const activeChatSessionIdRef = useRef<string | null>(null);
+  const effectiveModelIdRef = useRef<string | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
   const outputTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -138,6 +148,10 @@ export function ModePage() {
   useEffect(() => {
     activeChatSessionIdRef.current = activeChatSessionId;
   }, [activeChatSessionId]);
+
+  useEffect(() => {
+    effectiveModelIdRef.current = modelBinding?.effective_model_id ?? null;
+  }, [modelBinding?.effective_model_id]);
 
   const selectedMode = useMemo(
     () => (modeId ? modes.find((m) => m.id === modeId) : undefined),
@@ -218,18 +232,21 @@ export function ModePage() {
   useInferenceListeners({
     onChunk: (s) => {
       streamOutRef.current += s;
+      const outputOpts = {
+        preserveReasoning: modelPreservesReasoningTrace(effectiveModelIdRef.current),
+      };
+      const visible = visibleInferenceOutput(streamOutRef.current, outputOpts);
       if (streamModeRef.current === "chat") {
-        const acc = streamOutRef.current;
         setChatMessages((prev) => {
           const n = [...prev];
           const tail = n.length - 1;
           if (tail >= 0 && n[tail]?.role === "assistant") {
-            n[tail] = { role: "assistant", content: acc };
+            n[tail] = { role: "assistant", content: visible };
           }
           return n;
         });
       } else {
-        setOut((o) => o + s);
+        setOut(visible);
       }
     },
     onPhase: (phase) => setInferPhase(phase),
@@ -245,7 +262,12 @@ export function ModePage() {
             return last?.role === "assistant" ? prev.slice(0, -1) : prev;
           });
         } else {
-          const finalOut = stripChatArtifacts(streamOutRef.current);
+          const outputOpts = {
+            preserveReasoning: modelPreservesReasoningTrace(
+              effectiveModelIdRef.current,
+            ),
+          };
+          const finalOut = stripChatArtifacts(streamOutRef.current, outputOpts);
           let nextThread: ChatMessage[] = [];
           setChatMessages((prev) => {
             nextThread =
@@ -301,7 +323,10 @@ export function ModePage() {
       }
 
       const mid = modeIdRef.current;
-      const finalOut = stripChatArtifacts(streamOutRef.current);
+      const outputOpts = {
+        preserveReasoning: modelPreservesReasoningTrace(effectiveModelIdRef.current),
+      };
+      const finalOut = stripChatArtifacts(streamOutRef.current, outputOpts);
       if (mid) {
         const entry: ModeRunArchiveEntry = {
           id: crypto.randomUUID(),
@@ -495,16 +520,25 @@ export function ModePage() {
     [modeId],
   );
 
-  const clearEntireArchive = useCallback(() => {
-    if (!modeId) return;
-    if (
-      !window.confirm("Delete all archived runs for this mode? This cannot be undone.")
-    ) {
-      return;
+  const requestClearArchive = useCallback((target: ClearArchiveTarget) => {
+    setClearArchiveConfirm(target);
+  }, []);
+
+  const confirmClearArchive = useCallback(() => {
+    if (!modeId || clearArchiveConfirm === null) return;
+    if (clearArchiveConfirm === "chat") {
+      clearChatSessions(modeId);
+      setChatSessions([]);
+      activeChatSessionIdRef.current = null;
+      setActiveChatSessionId(null);
+      setChatMessages([]);
+      setChatComposerText("");
+    } else {
+      clearModeRunArchive(modeId);
+      setArchive([]);
     }
-    clearModeRunArchive(modeId);
-    setArchive([]);
-  }, [modeId]);
+    setClearArchiveConfirm(null);
+  }, [modeId, clearArchiveConfirm]);
 
   const startNewChat = useCallback(() => {
     activeChatSessionIdRef.current = null;
@@ -537,23 +571,6 @@ export function ModePage() {
     },
     [modeId, activeChatSessionId],
   );
-
-  const clearAllChatSessions = useCallback(() => {
-    if (!modeId) return;
-    if (
-      !window.confirm(
-        "Delete all saved chats for Chat mode on this computer? This cannot be undone.",
-      )
-    ) {
-      return;
-    }
-    clearChatSessions(modeId);
-    setChatSessions([]);
-    activeChatSessionIdRef.current = null;
-    setActiveChatSessionId(null);
-    setChatMessages([]);
-    setChatComposerText("");
-  }, [modeId]);
 
   const sendChat = useCallback(
     async (textOverride?: string) => {
@@ -689,6 +706,36 @@ export function ModePage() {
           <AlertDescription>{err}</AlertDescription>
         </Alert>
       ) : null}
+
+      <Dialog
+        open={clearArchiveConfirm !== null}
+        onOpenChange={(open) => {
+          if (!open) setClearArchiveConfirm(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Clear archive?</DialogTitle>
+            <DialogDescription>
+              {clearArchiveConfirm === "chat"
+                ? "Delete all saved chats for Chat mode on this computer? This cannot be undone."
+                : "Delete all archived runs for this mode? This cannot be undone."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setClearArchiveConfirm(null)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" variant="destructive" onClick={confirmClearArchive}>
+              Delete all
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
         <DialogContent
@@ -1100,15 +1147,15 @@ export function ModePage() {
                     variant="outline"
                     size="sm"
                     className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={clearAllChatSessions}
+                    onClick={() => requestClearArchive("chat")}
                   >
                     Clear archive
                   </Button>
                 ) : null}
               </div>
               <p className="text-xs text-muted-foreground">
-                Saved conversations (newest first). Continue a chat or delete one row;
-                Clear removes all.
+                Saved conversations (newest first). Continue a chat, delete one row, or
+                clear all—Clear archive opens a confirmation dialog first.
               </p>
               {chatSessions.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No saved chats yet.</p>
@@ -1288,7 +1335,7 @@ export function ModePage() {
                     variant="outline"
                     size="sm"
                     className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={clearEntireArchive}
+                    onClick={() => requestClearArchive("runs")}
                   >
                     Clear archive
                   </Button>
@@ -1296,7 +1343,7 @@ export function ModePage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 Successful runs are saved here (newest first). Delete individual rows or
-                clear everything.
+                clear all—Clear archive opens a confirmation dialog first.
               </p>
               {archive.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No archived runs yet.</p>

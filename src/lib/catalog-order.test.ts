@@ -46,24 +46,27 @@ describe("sortCatalogBySizeAscending", () => {
   it("handles same sizes as shipped catalog quants", () => {
     const sorted = sortCatalogBySizeAscending([
       entry("deepseek-r1-distill-qwen-7b-q4km", "DeepSeek R1", 4_683_073_504),
-      entry("qwen3-8b-q4km", "Qwen 3 8B", 5_027_784_224),
+      entry("hunyuan-mt-7b-q4km", "Hunyuan-MT 7B", 4_702_111_200),
       entry("ministral-3-8b-instruct-q4km", "Ministral 3 8B", 5_198_387_456),
     ]);
     expect(sorted.map((e) => e.id)).toEqual([
       "deepseek-r1-distill-qwen-7b-q4km",
-      "qwen3-8b-q4km",
+      "hunyuan-mt-7b-q4km",
       "ministral-3-8b-instruct-q4km",
     ]);
   });
 
-  it("orders full shipped catalog v5 by download size ascending", () => {
+  it("orders full shipped catalog v6 by download size ascending", () => {
     const sorted = sortCatalogBySizeAscending(SHIPPED_CATALOG.models);
     expect(sorted.map((e) => e.id)).toEqual([
+      "phi-4-mini-instruct-q4km",
       "deepseek-r1-distill-qwen-7b-q4km",
-      "qwen3-8b-q4km",
+      "hunyuan-mt-7b-q4km",
       "ministral-3-8b-instruct-q4km",
+      "qwen3.5-9b-q4km",
       "gemma-4-12b-it-q4km",
       "qwen3-14b-q4km",
+      "qwen3.6-27b-q4km",
     ]);
   });
 });
