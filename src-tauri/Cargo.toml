@@ -1,6 +1,6 @@
 [package]
 name = "maguna"
-version = "0.1.0"
+version = "0.2.0"
 description = "Maguna (Helvety) — GGUF catalog, installs, on-device llama-cpp-4 inference, multi-turn Chat plus modes with per-mode prompts, persisted settings incl. always-on guardrails"
 authors = ["Helvety"]
 edition = "2021"

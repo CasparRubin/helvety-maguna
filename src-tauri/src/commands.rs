@@ -324,7 +324,8 @@ pub async fn download_model(
         .map_err(|e| e.to_string())?
         .join(paths::catalog_download_partial_filename(&entry.id));
     // Network stream is done; rename or copy into `Models/` can take a long time (especially
-    // across volumes). Tell the UI so users do not assume it hung.
+    // across volumes). Emit `installing` so the progress card and catalog Download button
+    // switch to Finishing install… instead of looking hung.
     let _ = app.emit(
         "download-progress",
         serde_json::json!({

@@ -39,16 +39,37 @@ import type { CatalogEntry, GuardrailsSettings, InstalledModel } from "@/lib/typ
 
 type DownloadPhase = "downloading" | "installing";
 
+type DownloadProgress = {
+  modelId: string;
+  phase: DownloadPhase;
+  received: number;
+  total: number | null;
+};
+
+function catalogDownloadButtonLabel(
+  entryId: string,
+  progress: DownloadProgress | null,
+  pct: number | undefined,
+): string {
+  if (!progress || progress.modelId !== entryId) {
+    return "Download";
+  }
+  if (progress.phase === "installing") {
+    return "Finishing install…";
+  }
+  if (pct !== undefined) {
+    return `Downloading… ${pct}%`;
+  }
+  return "Downloading…";
+}
+
 export function ModelsPage() {
   const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
   const [installed, setInstalled] = useState<InstalledModel[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<{
-    modelId: string;
-    phase: DownloadPhase;
-    received: number;
-    total: number | null;
-  } | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [importPath, setImportPath] = useState("");
   const [importName, setImportName] = useState("Imported model");
@@ -169,10 +190,11 @@ export function ModelsPage() {
         <p className="text-sm text-muted-foreground">
           Pick a model, download or import the GGUF, then set it as default if you want
           every mode to use it unless you choose otherwise on that mode&apos;s page.
-          After the downloading step fills in, Maguna shows{" "}
-          <strong>Finishing install</strong> while the weights are renamed or copied
-          into your model folder (large models can take minutes, especially across
-          volumes).
+          While a catalog download runs, that card&apos;s <strong>Download</strong>{" "}
+          button shows <strong>Downloading…</strong> (with a percentage when known),
+          then <strong>Finishing install…</strong>; the progress card on this page also
+          tracks the stream and the rename-or-copy step into your model folder (large
+          models can take minutes, especially across volumes).
         </p>
       </header>
 
@@ -185,14 +207,21 @@ export function ModelsPage() {
       {downloadProgress ? (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
+            <CardTitle
+              className={cn(
+                "flex items-center gap-2 text-base",
+                downloadProgress.phase === "downloading" && "tabular-nums",
+              )}
+            >
               {downloadProgress.phase === "installing" ? (
                 <>
                   <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
-                  Finishing install
+                  Finishing install…
                 </>
+              ) : pct !== undefined ? (
+                `Downloading… ${pct}%`
               ) : (
-                "Downloading"
+                "Downloading…"
               )}
             </CardTitle>
             <CardDescription>
@@ -404,6 +433,10 @@ export function ModelsPage() {
         <div className="grid gap-4 md:grid-cols-2">
           {catalogSorted.map((entry) => {
             const releasedLabel = formatCatalogReleaseDate(entry.release_date);
+            const isThisDownloading = downloadProgress?.modelId === entry.id;
+            const downloadButtonLabel = isInstalled(entry.id)
+              ? "Installed"
+              : catalogDownloadButtonLabel(entry.id, downloadProgress, pct);
             return (
               <Card
                 key={entry.id}
@@ -446,10 +479,19 @@ export function ModelsPage() {
                   <Button
                     type="button"
                     size="sm"
-                    className="w-full shrink-0 sm:w-auto"
+                    className={cn(
+                      "w-full shrink-0 sm:w-auto",
+                      isThisDownloading && "tabular-nums",
+                    )}
                     disabled={isInstalled(entry.id) || downloadProgress !== null}
                     onClick={() => {
                       setError(null);
+                      setDownloadProgress({
+                        modelId: entry.id,
+                        phase: "downloading",
+                        received: 0,
+                        total: entry.size_bytes,
+                      });
                       void invoke("download_model", { catalogId: entry.id })
                         .then(() => {
                           setDownloadProgress(null);
@@ -461,8 +503,12 @@ export function ModelsPage() {
                         });
                     }}
                   >
-                    <Download aria-hidden />
-                    {isInstalled(entry.id) ? "Installed" : "Download"}
+                    {isThisDownloading ? (
+                      <Loader2 className="size-4 animate-spin" aria-hidden />
+                    ) : (
+                      <Download aria-hidden />
+                    )}
+                    {downloadButtonLabel}
                   </Button>
                 </CardContent>
               </Card>

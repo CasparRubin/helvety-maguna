@@ -1,10 +1,19 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CatalogEntry, GuardrailsSettings, InstalledModel } from "@/lib/types";
+import { RECOMMENDED_CATALOG_MODEL_ID } from "@/lib/catalog-order";
 import { SHIPPED_CATALOG } from "@/lib/shipped-catalog";
 import * as TauriApi from "@/lib/tauri-api";
 
@@ -22,6 +31,13 @@ const guardrailsPayload: GuardrailsSettings = {
   customText: null,
   builtInPolicyText: "synced-from-backend-stub-policy",
 };
+
+function downloadProgressCard() {
+  const bar = screen.getByRole("progressbar");
+  const card = bar.closest(".rounded-xl");
+  expect(card).toBeTruthy();
+  return card as HTMLElement;
+}
 
 function mockModelsPageInvoke(g: GuardrailsSettings = guardrailsPayload) {
   vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
@@ -150,6 +166,178 @@ describe("ModelsPage", () => {
         value: { enabled: true, customText: null },
       });
     });
+  });
+
+  it("shows download progress in the catalog button label", async () => {
+    const ministral = SHIPPED_CATALOG.models.find(
+      (m) => m.id === RECOMMENDED_CATALOG_MODEL_ID,
+    );
+    expect(ministral).toBeDefined();
+
+    let progressHandler:
+      | ((ev: {
+          payload: {
+            model_id: string;
+            phase?: "downloading" | "installing";
+            received: number;
+            total: number | null;
+          };
+        }) => void)
+      | undefined;
+
+    vi.mocked(TauriApi.listen).mockImplementation((event, handler) => {
+      if (event === "download-progress") {
+        progressHandler = handler as typeof progressHandler;
+      }
+      return Promise.resolve(() => {});
+    });
+
+    vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
+      switch (cmd) {
+        case "get_catalog":
+          return Promise.resolve([ministral!]);
+        case "list_installed_models":
+          return Promise.resolve(emptyInstalled);
+        case "get_active_model_id":
+          return Promise.resolve(null);
+        case "get_guardrails_settings":
+          return Promise.resolve(guardrailsPayload);
+        case "download_model":
+          return new Promise(() => {});
+        default:
+          return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+      }
+    }) as typeof TauriApi.invoke);
+
+    render(
+      <MemoryRouter initialEntries={["/models"]}>
+        <ModelsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Ministral 3 8B")).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /^Download$/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Downloading… 0%/i }),
+      ).toBeInTheDocument();
+      expect(
+        within(downloadProgressCard()).getByText(/Downloading… 0%/i),
+      ).toBeInTheDocument();
+    });
+    expect(TauriApi.invoke).toHaveBeenCalledWith("download_model", {
+      catalogId: RECOMMENDED_CATALOG_MODEL_ID,
+    });
+
+    expect(progressHandler).toBeDefined();
+    act(() => {
+      progressHandler!({
+        payload: {
+          model_id: RECOMMENDED_CATALOG_MODEL_ID,
+          phase: "downloading",
+          received: 100_000_000,
+          total: null,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^Downloading…$/i }),
+      ).toBeInTheDocument();
+      expect(
+        within(downloadProgressCard()).getByText(/^Downloading…$/i),
+      ).toBeInTheDocument();
+    });
+
+    act(() => {
+      progressHandler!({
+        payload: {
+          model_id: RECOMMENDED_CATALOG_MODEL_ID,
+          phase: "downloading",
+          received: 500_000_000,
+          total: 1_000_000_000,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Downloading… 50%/i }),
+      ).toBeInTheDocument();
+      expect(
+        within(downloadProgressCard()).getByText(/Downloading… 50%/i),
+      ).toBeInTheDocument();
+    });
+
+    act(() => {
+      progressHandler!({
+        payload: {
+          model_id: RECOMMENDED_CATALOG_MODEL_ID,
+          phase: "installing",
+          received: ministral!.size_bytes,
+          total: ministral!.size_bytes,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Finishing install…/i }),
+      ).toBeInTheDocument();
+      expect(
+        within(downloadProgressCard()).getByText(/Finishing install…/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("disables other catalog download buttons while one model is downloading", async () => {
+    vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
+      switch (cmd) {
+        case "get_catalog":
+          return Promise.resolve(SHIPPED_CATALOG.models);
+        case "list_installed_models":
+          return Promise.resolve(emptyInstalled);
+        case "get_active_model_id":
+          return Promise.resolve(null);
+        case "get_guardrails_settings":
+          return Promise.resolve(guardrailsPayload);
+        case "download_model":
+          return new Promise(() => {});
+        default:
+          return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+      }
+    }) as typeof TauriApi.invoke);
+
+    render(
+      <MemoryRouter initialEntries={["/models"]}>
+        <ModelsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /^Download$/i })).toHaveLength(5);
+    });
+
+    const downloadButtons = screen.getAllByRole("button", { name: /^Download$/i });
+    fireEvent.click(downloadButtons[2]!);
+
+    await waitFor(() => {
+      expect(downloadButtons[2]).toHaveAccessibleName(/Downloading… 0%/i);
+    });
+
+    for (const [index, button] of downloadButtons.entries()) {
+      expect(button).toBeDisabled();
+      if (index === 2) {
+        expect(button).toHaveAccessibleName(/Downloading… 0%/i);
+      } else {
+        expect(button).toHaveAccessibleName(/^Download$/i);
+      }
+    }
   });
 
   it("save guardrails sends non-null customText when the textarea has content", async () => {
