@@ -15,6 +15,7 @@ coverage
 
 # Rust (Tauri crate)
 src-tauri/target
+.spike-models
 
 # Editor directories and files
 .vscode/*

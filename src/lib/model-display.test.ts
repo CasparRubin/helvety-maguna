@@ -3,7 +3,17 @@ import { describe, expect, it } from "vitest";
 import { compactModelDisplayName } from "@/lib/model-display";
 
 describe("compactModelDisplayName", () => {
-  it("keeps only base + parameter count for verbose default names", () => {
+  it("keeps shipped catalog v5 display names unchanged", () => {
+    expect(compactModelDisplayName("Qwen 3 14B")).toBe("Qwen 3 14B");
+    expect(compactModelDisplayName("Qwen 3 8B")).toBe("Qwen 3 8B");
+    expect(compactModelDisplayName("Gemma 4 12B")).toBe("Gemma 4 12B");
+    expect(compactModelDisplayName("Ministral 3 8B")).toBe("Ministral 3 8B");
+    expect(compactModelDisplayName("DeepSeek R1 Distill Qwen 7B")).toBe(
+      "DeepSeek R1 Distill Qwen 7B",
+    );
+  });
+
+  it("still compacts legacy verbose catalog / import names", () => {
     expect(compactModelDisplayName("Mistral 7B Instruct v0.3 (Q4_K_M)")).toBe(
       "Mistral 7B",
     );

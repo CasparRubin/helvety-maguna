@@ -4,8 +4,10 @@ import type { CatalogEntry } from "@/lib/types";
 import {
   formatApproxDownloadGb,
   formatCatalogReleaseDate,
+  RECOMMENDED_CATALOG_MODEL_ID,
   sortCatalogBySizeAscending,
 } from "@/lib/catalog-order";
+import { SHIPPED_CATALOG } from "@/lib/shipped-catalog";
 
 function entry(id: string, display_name: string, size_bytes: number): CatalogEntry {
   return {
@@ -43,15 +45,33 @@ describe("sortCatalogBySizeAscending", () => {
 
   it("handles same sizes as shipped catalog quants", () => {
     const sorted = sortCatalogBySizeAscending([
-      entry("mistral-7b-instruct-v03-q4km", "Mistral", 4_372_812_000),
       entry("deepseek-r1-distill-qwen-7b-q4km", "DeepSeek R1", 4_683_073_504),
-      entry("qwen2.5-7b-instruct-q4km", "Qwen 7B", 5_025_111_736),
+      entry("qwen3-8b-q4km", "Qwen 3 8B", 5_027_784_224),
+      entry("ministral-3-8b-instruct-q4km", "Ministral 3 8B", 5_198_387_456),
     ]);
     expect(sorted.map((e) => e.id)).toEqual([
-      "mistral-7b-instruct-v03-q4km",
       "deepseek-r1-distill-qwen-7b-q4km",
-      "qwen2.5-7b-instruct-q4km",
+      "qwen3-8b-q4km",
+      "ministral-3-8b-instruct-q4km",
     ]);
+  });
+
+  it("orders full shipped catalog v5 by download size ascending", () => {
+    const sorted = sortCatalogBySizeAscending(SHIPPED_CATALOG.models);
+    expect(sorted.map((e) => e.id)).toEqual([
+      "deepseek-r1-distill-qwen-7b-q4km",
+      "qwen3-8b-q4km",
+      "ministral-3-8b-instruct-q4km",
+      "gemma-4-12b-it-q4km",
+      "qwen3-14b-q4km",
+    ]);
+  });
+});
+
+describe("RECOMMENDED_CATALOG_MODEL_ID", () => {
+  it("matches a model in the shipped catalog", () => {
+    const ids = SHIPPED_CATALOG.models.map((m) => m.id);
+    expect(ids).toContain(RECOMMENDED_CATALOG_MODEL_ID);
   });
 });
 

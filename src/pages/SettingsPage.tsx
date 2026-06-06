@@ -224,9 +224,10 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="flex flex-col gap-3 text-sm text-muted-foreground">
           <p>
-            Models run locally via llama.cpp; prompts and transcripts stay on your
-            machine unless you copy or export them. Helvety builds tools for natural,
-            multilingual writing—not a warranty that any AI output is correct or safe.
+            Models run locally via llama.cpp (through the bundled `llama-cpp-4` engine);
+            prompts and transcripts stay on your machine unless you copy or export them.
+            Helvety builds tools for natural, multilingual writing—not a warranty that
+            any AI output is correct or safe.
           </p>
         </CardContent>
       </Card>

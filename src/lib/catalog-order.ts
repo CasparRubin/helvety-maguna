@@ -4,7 +4,7 @@ import type { CatalogEntry } from "@/lib/types";
  * Catalog entry id that shows the “Recommended” badge and card highlight.
  * Independent of sort order (catalog is listed smallest → largest download).
  */
-export const RECOMMENDED_CATALOG_MODEL_ID = "mistral-7b-instruct-v03-q4km";
+export const RECOMMENDED_CATALOG_MODEL_ID = "ministral-3-8b-instruct-q4km";
 
 /** Sort by `size_bytes` ascending, then `display_name` for stable ties. */
 export function sortCatalogBySizeAscending(entries: CatalogEntry[]): CatalogEntry[] {

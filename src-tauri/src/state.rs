@@ -71,15 +71,24 @@ pub struct AppState {
     pub cancel_infer: Arc<AtomicBool>,
     settings: Mutex<PersistedSettings>,
     #[cfg(feature = "llama")]
-    pub loaded: Mutex<Option<(String, ChatTemplate, Arc<llama_cpp::LlamaModel>)>>,
+    pub llama_backend: Arc<llama_cpp_4::llama_backend::LlamaBackend>,
+    #[cfg(feature = "llama")]
+    pub loaded: Mutex<Option<(String, ChatTemplate, Arc<llama_cpp_4::model::LlamaModel>)>>,
 }
 
 impl AppState {
     pub fn new(app: &tauri::AppHandle) -> Self {
         let s = load_settings(app);
+        #[cfg(feature = "llama")]
+        let llama_backend = Arc::new(
+            llama_cpp_4::llama_backend::LlamaBackend::init()
+                .expect("llama.cpp backend init failed"),
+        );
         Self {
             cancel_infer: Arc::new(AtomicBool::new(false)),
             settings: Mutex::new(s),
+            #[cfg(feature = "llama")]
+            llama_backend,
             #[cfg(feature = "llama")]
             loaded: Mutex::new(None),
         }
@@ -186,19 +195,26 @@ impl AppState {
 
     #[cfg(feature = "llama")]
     pub fn load_model_for_id(&self, app: &tauri::AppHandle, model_id: &str) -> MagunaResult<()> {
+        use llama_cpp_4::model::params::LlamaModelParams;
+
         let dir = paths::models_dir(app)?.join(model_id);
         let manifest = crate::storage::read_manifest(&dir)?;
         let template = ChatTemplate::resolve(&manifest.chat_template, model_id);
         let path = crate::storage::effective_gguf_path(&dir, &manifest)?;
-        let params = llama_cpp::LlamaParams::default();
-        let model = llama_cpp::LlamaModel::load_from_file(path, params)
-            .map_err(|e| MagunaError::msg(format!("load model: {e}")))?;
+        let model = llama_cpp_4::model::LlamaModel::load_from_file(
+            self.llama_backend.as_ref(),
+            path,
+            &LlamaModelParams::default(),
+        )
+        .map_err(|e| MagunaError::msg(format!("load model: {e}")))?;
         *self.loaded.lock() = Some((model_id.to_string(), template, Arc::new(model)));
         Ok(())
     }
 
     #[cfg(feature = "llama")]
-    pub fn loaded_for_inference(&self) -> MagunaResult<(Arc<llama_cpp::LlamaModel>, ChatTemplate)> {
+    pub fn loaded_for_inference(
+        &self,
+    ) -> MagunaResult<(Arc<llama_cpp_4::model::LlamaModel>, ChatTemplate)> {
         self.loaded
             .lock()
             .as_ref()

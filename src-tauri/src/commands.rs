@@ -2,6 +2,8 @@ use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_opener::OpenerExt;
 
 use std::collections::HashSet;
+#[cfg(feature = "llama")]
+use std::sync::Arc;
 
 use crate::catalog::{self, CatalogModel};
 use crate::chat_template::manifest_template_key_from_hints;
@@ -566,14 +568,18 @@ fn spawn_llama_stream_prompt(
 ) -> Result<(), String> {
     state.reset_cancel();
     let (model, _) = state.loaded_for_inference().map_err(|e| e.to_string())?;
+    let backend = Arc::clone(&state.llama_backend);
     let cancel = state.cancel_infer.clone();
     let app_h = app.clone();
-    // Inference uses its own current-thread Tokio driver for `llama_cpp` stream recv; keep it
-    // off the main async runtime to avoid `block_in_place` + `spawn_blocking` deadlocks.
     std::thread::spawn(move || {
-        if let Err(e) =
-            inference::stream_chat_completion(&app_h, &model, prompt, max_tokens, &cancel)
-        {
+        if let Err(e) = inference::stream_chat_completion(
+            &app_h,
+            backend.as_ref(),
+            &model,
+            prompt,
+            max_tokens,
+            &cancel,
+        ) {
             let _ = app_h.emit("inference-error", e);
         }
     });

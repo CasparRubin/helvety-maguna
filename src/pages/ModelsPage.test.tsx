@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CatalogEntry, GuardrailsSettings, InstalledModel } from "@/lib/types";
+import { SHIPPED_CATALOG } from "@/lib/shipped-catalog";
 import * as TauriApi from "@/lib/tauri-api";
 
 import { ModelsPage } from "./ModelsPage";
@@ -92,6 +93,36 @@ describe("ModelsPage", () => {
         "download-progress",
         expect.any(Function),
       );
+    });
+  });
+
+  it("shows Recommended badge on Ministral 3 8B when catalog is loaded", async () => {
+    vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
+      switch (cmd) {
+        case "get_catalog":
+          return Promise.resolve(SHIPPED_CATALOG.models);
+        case "list_installed_models":
+          return Promise.resolve(emptyInstalled);
+        case "get_active_model_id":
+          return Promise.resolve(null);
+        case "get_guardrails_settings":
+          return Promise.resolve(guardrailsPayload);
+        case "set_guardrails_settings":
+          return Promise.resolve(undefined);
+        default:
+          return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+      }
+    }) as typeof TauriApi.invoke);
+
+    render(
+      <MemoryRouter initialEntries={["/models"]}>
+        <ModelsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("Recommended")).toBeInTheDocument();
+      expect(screen.getByText("Ministral 3 8B")).toBeInTheDocument();
     });
   });
 

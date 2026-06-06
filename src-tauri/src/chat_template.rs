@@ -4,9 +4,8 @@
 //! built-in or custom text) plus mode-specific prose from [`crate::modes::ModeDefinition`] (defaults in [`crate::prompts`],
 //! overrides in `modes.json`).
 //!
-//! Qwen2.x uses ChatML (`im_start` / `im_end`). Gemma 2 IT uses `<start_of_turn>` turns.
-//! Moonshot Moonlight / Kimi K2 use `im_system` / `im_user` / `im_middle` / `im_assistant`
-//! special tokens (same shape as upstream llama.cpp `LLM_CHAT_TEMPLATE_KIMI_K2`).
+//! Qwen2.x / Qwen3 uses ChatML (`im_start` / `im_end`). Gemma 2/4 IT uses `<start_of_turn>` turns.
+//! Ministral 3 and Moonshot Moonlight / Kimi K2 use `im_system` / `im_user` / `im_middle` tokens.
 //!
 //! Filename / display-name hints (used for GGUF imports) are always compiled.
 //! The resolved enum is compiled with the `llama` feature. `ChatTemplate::format_prompt` wraps
@@ -16,6 +15,9 @@
 /// family, returns the manifest/catalog key (`mistral_instruct`, `qwen2_instruct`, …).
 pub fn try_catalog_template_key_from_hint(hint: &str) -> Option<&'static str> {
     let lower = hint.to_ascii_lowercase();
+    if lower.contains("ministral") {
+        return Some("mistral3_instruct");
+    }
     if lower.contains("mistral") {
         return Some("mistral_instruct");
     }
@@ -68,10 +70,12 @@ pub enum ChatTemplate {
     TinyLlamaV1,
     Llama3Instruct,
     MistralInstruct,
-    /// Qwen2 / Qwen2.5 Instruct (ChatML).
+    /// Qwen2 / Qwen2.5 / Qwen3 instruct (ChatML).
     QwenChatMl,
-    /// Google Gemma 2 instruction-tuned (`assistant` → `model` turn).
+    /// Google Gemma 2 / Gemma 4 instruction-tuned (`assistant` → `model` turn).
     Gemma2It,
+    /// Mistral 3 / Ministral instruct (mistral-common token layout).
+    Mistral3Instruct,
     /// Moonshot Moonlight, Kimi K2 instruct, and same token layout as llama.cpp `kimi-k2`.
     KimiMoonshot,
 }
@@ -91,8 +95,11 @@ impl ChatTemplate {
         match s.trim().to_ascii_lowercase().as_str() {
             "llama3" | "llama3_instruct" | "llama-3" => Self::Llama3Instruct,
             "mistral" | "mistral_instruct" => Self::MistralInstruct,
+            "mistral3_instruct" | "mistral3" | "ministral" => Self::Mistral3Instruct,
             "qwen2_instruct" | "qwen_instruct" | "qwen_chatml" | "chatml" => Self::QwenChatMl,
-            "gemma2_it" | "gemma2" | "gemma_it" | "gemma" => Self::Gemma2It,
+            "gemma2_it" | "gemma2" | "gemma4_it" | "gemma4" | "gemma_it" | "gemma" => {
+                Self::Gemma2It
+            }
             "moonshot_instruct" | "kimi_k2" | "kimi" | "moonlight" => Self::KimiMoonshot,
             _ => Self::TinyLlamaV1,
         }
@@ -133,7 +140,9 @@ impl ChatTemplate {
             Self::Gemma2It => format!(
                 "<start_of_turn>user\n{system}\n\n{user}<end_of_turn>\n<start_of_turn>model\n"
             ),
-            Self::KimiMoonshot => format!("{K_SYS}{system}{IM_END}{K_USER}{user}{IM_END}{K_ASST}"),
+            Self::Mistral3Instruct | Self::KimiMoonshot => {
+                format!("{K_SYS}{system}{IM_END}{K_USER}{user}{IM_END}{K_ASST}")
+            }
         }
     }
 
@@ -243,7 +252,7 @@ impl ChatTemplate {
                 s.push_str("<start_of_turn>model\n");
                 s
             }
-            Self::KimiMoonshot => {
+            Self::Mistral3Instruct | Self::KimiMoonshot => {
                 let mut s = format!("{K_SYS}{system}{IM_END}");
                 for &(role, text) in pieces {
                     match role {
@@ -316,8 +325,24 @@ mod tests {
             "qwen2_instruct".to_string()
         );
         assert_eq!(
+            manifest_template_key_from_hints(["Qwen_Qwen3-8B-Q4_K_M"]),
+            "qwen2_instruct".to_string()
+        );
+        assert_eq!(
             manifest_template_key_from_hints(["foobar", "gemma-story"]),
             "gemma2_it".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["gemma-4-12B-it-Q4_K_M"]),
+            "gemma2_it".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["ministral-3-8b-instruct-q4km"]),
+            "mistral3_instruct".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["mistral-7b-instruct-v03-q4km"]),
+            "mistral_instruct".to_string()
         );
         assert!(manifest_template_key_from_hints(["zzz", "\n"]).is_empty());
     }

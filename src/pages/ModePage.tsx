@@ -1078,8 +1078,8 @@ export function ModePage() {
               ) : null}
               {busy && inferPhase === "prefill" ? (
                 <p className="text-xs text-muted-foreground">
-                  Absorbing the prompt on CPU is often the slowest part; streamed text
-                  appears once this finishes.
+                  Absorbing the prompt is often the slowest part; streamed text appears
+                  once prefill finishes.
                 </p>
               ) : null}
               {runDurationMs !== null ? (
@@ -1249,8 +1249,8 @@ export function ModePage() {
             ) : null}
             {busy && inferPhase === "prefill" ? (
               <p className="text-xs text-muted-foreground">
-                Absorbing the prompt on CPU is often the slowest part; streamed text
-                appears once this finishes.
+                Absorbing the prompt is often the slowest part; streamed text appears
+                once prefill finishes.
               </p>
             ) : null}
             {runDurationMs !== null ? (

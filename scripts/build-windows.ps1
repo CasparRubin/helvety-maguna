@@ -1,4 +1,5 @@
 # Sets LIBCLANG_PATH / NM_PATH for bindgen, then runs a full Tauri production build (default features include the engine).
+# First engine compile also needs CMake on PATH — see README (Requirements).
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
@@ -27,4 +28,5 @@ $env:PATH = "$bin;$env:PATH"
 
 Write-Host "LIBCLANG_PATH=$($env:LIBCLANG_PATH)" -ForegroundColor Green
 if ($env:NM_PATH) { Write-Host "NM_PATH=$($env:NM_PATH)" -ForegroundColor Green }
+node scripts/ensure-llama-cmake-cache.mjs
 bunx tauri build

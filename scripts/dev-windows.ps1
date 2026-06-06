@@ -1,4 +1,5 @@
-# Sets LIBCLANG_PATH for bindgen (llama_cpp_sys), then runs full Tauri dev (default build includes the engine).
+# Sets LIBCLANG_PATH for bindgen (llama-cpp-sys-4), then runs full Tauri dev (default build includes the engine).
+# First engine compile also needs CMake on PATH — see README (Requirements).
 $ErrorActionPreference = "Stop"
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
@@ -28,7 +29,7 @@ if (-not $bin) {
 }
 
 $env:LIBCLANG_PATH = $bin
-# llama_cpp_sys also invokes llvm-nm during the build; it must be on PATH or NM_PATH.
+# llama-cpp-sys-4 also invokes llvm-nm during the build; it must be on PATH or NM_PATH.
 $llvmNm = Join-Path $bin "llvm-nm.exe"
 if (Test-Path $llvmNm) {
     $env:NM_PATH = $llvmNm
@@ -39,4 +40,5 @@ $env:PATH = "$bin;$env:PATH"
 
 Write-Host "LIBCLANG_PATH=$($env:LIBCLANG_PATH)" -ForegroundColor Green
 if ($env:NM_PATH) { Write-Host "NM_PATH=$($env:NM_PATH)" -ForegroundColor Green }
+node scripts/ensure-llama-cmake-cache.mjs
 bunx tauri dev

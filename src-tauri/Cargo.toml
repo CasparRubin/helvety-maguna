@@ -1,7 +1,7 @@
 [package]
 name = "maguna"
 version = "0.1.0"
-description = "Maguna (Helvety) — GGUF catalog, installs, on-device llama_cpp inference, multi-turn Chat plus modes with per-mode prompts, persisted settings incl. always-on guardrails"
+description = "Maguna (Helvety) — GGUF catalog, installs, on-device llama-cpp-4 inference, multi-turn Chat plus modes with per-mode prompts, persisted settings incl. always-on guardrails"
 authors = ["Helvety"]
 edition = "2021"
 
@@ -9,9 +9,7 @@ edition = "2021"
 # Default includes the GGUF engine. `--no-default-features` builds a lighter binary: catalog,
 # download, and import still run; inference (`run_mode` / `run_mode_chat`) is unavailable.
 default = ["llama"]
-llama = ["dep:llama_cpp"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+llama = ["dep:llama-cpp-4"]
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -24,8 +22,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
+tauri = { version = "2.11", features = [] }
+tauri-plugin-opener = "2.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -38,7 +36,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # `metal`: on macOS ggml links Apple Metal GPU acceleration (much faster prompt + decode than CPU-only).
 # On other targets the `metal` feature is ignored at build time; weights still run CPU-only until you use
-# Vulkan/CUDA-capable forks or a backend that exposes them via `llama_cpp_sys`.
-llama_cpp = { version = "0.3.2", default-features = true, features = ["metal"], optional = true }
+# Vulkan/CUDA-capable backends via `llama-cpp-4` feature flags.
+llama-cpp-4 = { version = "0.3", default-features = true, features = ["metal"], optional = true }
 parking_lot = "0.12"
 
+[[example]]
+name = "spike_load"
+path = "examples/spike_load.rs"
+required-features = ["llama"]

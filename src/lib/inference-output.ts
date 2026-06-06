@@ -1,4 +1,7 @@
-/** Trim if the model starts a new chat turn or special tokens. */
+const THINK_OPEN = "<" + "think" + ">";
+const THINK_CLOSE = "</" + "think" + ">";
+
+/** Trim if the model starts a new chat turn, special tokens, or a reasoning trace. */
 export function stripChatArtifacts(text: string): string {
   const markers = [
     "<|eot_id|>",
@@ -8,6 +11,9 @@ export function stripChatArtifacts(text: string): string {
     "</s>",
     "[/INST]",
     "<|start_header_id|>",
+    THINK_OPEN,
+    THINK_CLOSE,
+    "<|channel|>thought",
   ];
   let end = text.length;
   for (const m of markers) {

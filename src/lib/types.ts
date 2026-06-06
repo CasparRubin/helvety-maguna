@@ -11,7 +11,7 @@ export type CatalogEntry = {
   languages: string[];
   license_note: string;
   hf_repo: string;
-  /** e.g. `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`, `qwen2_instruct`, `gemma2_it`, `moonshot_instruct`; bundled catalog supplies this; omitting defaults to Rust `tinyllama_v1`. */
+  /** e.g. `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`, `mistral3_instruct`, `qwen2_instruct`, `gemma2_it`, `moonshot_instruct`; bundled catalog supplies this; omitting defaults to Rust `tinyllama_v1`. */
   chat_template?: string;
   /** ISO `YYYY-MM-DD` for the upstream instruct checkpoint release when known. */
   release_date?: string | null;

@@ -38,6 +38,12 @@ describe("stripChatArtifacts", () => {
     expect(stripChatArtifacts("ok <|assistant|>")).toBe("ok");
   });
 
+  it("truncates before Qwen3 / DeepSeek-style thinking markers", () => {
+    const open = "<" + "think" + ">";
+    expect(stripChatArtifacts(`Answer${open}reasoning`)).toBe("Answer");
+    expect(stripChatArtifacts("done<|channel|>thought")).toBe("done");
+  });
+
   it("removes leading whitespace in plain output", () => {
     expect(stripChatArtifacts(" Hallo Andreas")).toBe("Hallo Andreas");
   });

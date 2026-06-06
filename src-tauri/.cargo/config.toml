@@ -1,0 +1,6 @@
+# llama-cpp-sys-4 (C++17 std::filesystem) requires macOS 10.15+ at link time.
+[env]
+MACOSX_DEPLOYMENT_TARGET = "10.15"
+CMAKE_OSX_DEPLOYMENT_TARGET = "10.15"
+CXXFLAGS = "-mmacosx-version-min=10.15"
+CFLAGS = "-mmacosx-version-min=10.15"
