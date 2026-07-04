@@ -142,6 +142,36 @@ describe("ModelsPage", () => {
     });
   });
 
+  it("lists GLM catalog models when the shipped catalog is loaded", async () => {
+    vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
+      switch (cmd) {
+        case "get_catalog":
+          return Promise.resolve(SHIPPED_CATALOG.models);
+        case "list_installed_models":
+          return Promise.resolve(emptyInstalled);
+        case "get_active_model_id":
+          return Promise.resolve(null);
+        case "get_guardrails_settings":
+          return Promise.resolve(guardrailsPayload);
+        case "set_guardrails_settings":
+          return Promise.resolve(undefined);
+        default:
+          return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+      }
+    }) as typeof TauriApi.invoke);
+
+    render(
+      <MemoryRouter initialEntries={["/models"]}>
+        <ModelsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("GLM-4 9B")).toBeInTheDocument();
+      expect(screen.getByText("GLM-4.7 Flash")).toBeInTheDocument();
+    });
+  });
+
   it("save guardrails always sends enabled true", async () => {
     mockModelsPageInvoke();
 

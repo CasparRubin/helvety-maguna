@@ -75,6 +75,16 @@ describe("stripChatArtifacts", () => {
     expect(stripChatArtifacts("Hi<|end|>")).toBe("Hi");
   });
 
+  it("strips GLM control tokens and thinking blocks", () => {
+    const glmOpen = "<" + "redacted_thinking" + ">";
+    const glmClose = "</" + "redacted_thinking" + ">";
+    expect(stripChatArtifacts(`Answer${glmOpen}steps${glmClose}`)).toBe("Answer");
+    expect(stripChatArtifacts(`Answer${glmOpen}steps`)).toBe("Answer");
+    expect(stripChatArtifacts("Hi[gMASK]")).toBe("Hi");
+    expect(stripChatArtifacts("Hi<sop>")).toBe("Hi");
+    expect(stripChatArtifacts("Hallo/nothink")).toBe("Hallo");
+  });
+
   it("truncates Mistral 3 im_end echoes", () => {
     const imEnd = "<|" + "im_end" + "|>";
     expect(stripChatArtifacts(`Hi!${imEnd}`)).toBe("Hi!");
@@ -99,6 +109,16 @@ describe("stripChatArtifacts", () => {
     ).toBe(`hidden${open}steps${close}Answer`);
   });
 
+  it("preserves GLM redacted_thinking when requested", () => {
+    const glmOpen = "<" + "redacted_thinking" + ">";
+    const glmClose = "</" + "redacted_thinking" + ">";
+    expect(
+      stripChatArtifacts(`trace${glmOpen}steps${glmClose}Answer`, {
+        preserveReasoning: true,
+      }),
+    ).toBe(`trace${glmOpen}steps${glmClose}Answer`);
+  });
+
   it("removes leading whitespace in plain output", () => {
     expect(stripChatArtifacts(" Hallo Andreas")).toBe("Hallo Andreas");
   });
@@ -119,9 +139,16 @@ describe("modelPreservesReasoningTrace", () => {
     expect(modelPreservesReasoningTrace("deepseek-r1-distill-qwen-7b-q4km")).toBe(true);
   });
 
+  it("returns true for GLM-Z1 import ids", () => {
+    expect(modelPreservesReasoningTrace("glm-z1-9b-import")).toBe(true);
+    expect(modelPreservesReasoningTrace("GLM_Z1_9B")).toBe(true);
+  });
+
   it("returns false for polished-output catalog models", () => {
     expect(modelPreservesReasoningTrace("qwen3.5-9b-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace("gemma-4-12b-it-q4km")).toBe(false);
+    expect(modelPreservesReasoningTrace("glm-4-9b-0414-q4km")).toBe(false);
+    expect(modelPreservesReasoningTrace("glm-4.7-flash-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace(null)).toBe(false);
   });
 });

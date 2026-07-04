@@ -15,7 +15,7 @@ pub struct InstalledManifest {
     pub gguf_path: PathBuf,
     pub sha256: Option<String>,
     pub source_url: Option<String>,
-    /// Catalog-style key (`qwen2_instruct`, `qwen2_instruct_reasoning`, `gemma4_it`, `mistral3_instruct`, …).
+    /// Catalog-style key (`qwen2_instruct`, `qwen2_instruct_reasoning`, `gemma4_it`, `mistral3_instruct`, `glm4_instruct`, `glm47_flash`, `glm4_z1`, …).
     /// Empty = infer from model id / hint.
     #[serde(default)]
     pub chat_template: String,

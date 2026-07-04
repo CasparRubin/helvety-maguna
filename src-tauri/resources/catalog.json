@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "models": [
     {
       "id": "phi-4-mini-instruct-q4km",
@@ -72,6 +72,20 @@
       "release_date": "2026-03-02"
     },
     {
+      "id": "glm-4-9b-0414-q4km",
+      "maker": "Z.ai",
+      "display_name": "GLM-4 9B",
+      "description": "Z.ai's compact 9B instruct checkpoint (April 2025 refresh): strong multilingual chat including English and German at ~6.2 GB. Good everyday alternative to Qwen 3.5 9B when you want GLM-style answers. Maguna uses GLM-4 role-token formatting (`[gMASK]<sop>` layout) and strips control tokens from displayed output.",
+      "url": "https://huggingface.co/bartowski/THUDM_GLM-4-9B-0414-GGUF/resolve/main/THUDM_GLM-4-9B-0414-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 6166574464,
+      "languages": ["en", "de", "zh"],
+      "license_note": "MIT — see Z.ai / THUDM GLM-4 model card on Hugging Face.",
+      "hf_repo": "bartowski/THUDM_GLM-4-9B-0414-GGUF",
+      "chat_template": "glm4_instruct",
+      "release_date": "2025-04-14"
+    },
+    {
       "id": "gemma-4-12b-it-q4km",
       "maker": "Google",
       "display_name": "Gemma 4 12B",
@@ -112,6 +126,20 @@
       "hf_repo": "Smoffyy/Qwen3.6-27B-Instruct-Pure-GGUF",
       "chat_template": "qwen2_instruct",
       "release_date": "2026-04-22"
+    },
+    {
+      "id": "glm-4.7-flash-q4km",
+      "maker": "Z.ai",
+      "display_name": "GLM-4.7 Flash",
+      "description": "Z.ai's 30B MoE flagship (~3B active per token) for maximum reasoning quality when you have the headroom—expect ~18.5 GB on disk and 24 GB+ system RAM for comfortable use. Maguna disables hybrid thinking (`/nothink`) and filters internal reasoning tokens from displayed output. Heavier than Qwen 3.6 27B; long multi-turn chat may be slower on 16 GB laptops.",
+      "url": "https://huggingface.co/bartowski/zai-org_GLM-4.7-Flash-GGUF/resolve/main/zai-org_GLM-4.7-Flash-Q4_K_M.gguf",
+      "sha256": null,
+      "size_bytes": 18474983296,
+      "languages": ["en", "de", "zh"],
+      "license_note": "MIT — see Z.ai GLM-4.7-Flash model card on Hugging Face.",
+      "hf_repo": "bartowski/zai-org_GLM-4.7-Flash-GGUF",
+      "chat_template": "glm47_flash",
+      "release_date": "2026-01-21"
     }
   ]
 }

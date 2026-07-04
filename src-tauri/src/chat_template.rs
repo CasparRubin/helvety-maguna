@@ -12,6 +12,9 @@
 //! `<|channel>thought` / `<channel|>` prefix when thinking is off.
 //! Microsoft Phi-4 mini uses `<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`.
 //! Tencent Hunyuan dense uses `<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`.
+//! Z.ai GLM-4 9B uses `[gMASK]<sop>` plus `<|system|>` / `<|user|>` / `<|assistant|>`.
+//! GLM-4.7 Flash appends `/nothink` on user turns and closes prior thinking blocks in assistant history.
+//! GLM-Z1 opens `<think>` at generation time for reasoning imports.
 //!
 //! Filename / display-name hints (used for GGUF imports) are always compiled.
 //! The resolved enum is compiled with the `llama` feature. `ChatTemplate::format_prompt` wraps
@@ -47,6 +50,26 @@ pub fn try_catalog_template_key_from_hint(hint: &str) -> Option<&'static str> {
     }
     if lower.contains("moonlight") || lower.contains("moonshot") || lower.contains("kimi") {
         return Some("moonshot_instruct");
+    }
+    if lower.contains("glm-4.7")
+        || lower.contains("glm47")
+        || lower.contains("glm_4.7")
+        || lower.contains("glm-4.7-flash")
+    {
+        return Some("glm47_flash");
+    }
+    if lower.contains("glm-z1") || lower.contains("glm_z1") {
+        return Some("glm4_z1");
+    }
+    if lower.contains("glm-4-9b")
+        || lower.contains("glm4-9b")
+        || lower.contains("glm_4_9b")
+        || lower.contains("glm-4-9b-0414")
+    {
+        return Some("glm4_instruct");
+    }
+    if lower.contains("glm-4") || lower.contains("glm4") || lower.contains("glm_4") {
+        return Some("glm4_instruct");
     }
     if lower.contains("llama-3.2")
         || lower.contains("llama3.2")
@@ -102,7 +125,34 @@ pub enum ChatTemplate {
     Phi4Instruct,
     /// Tencent Hunyuan dense / Hunyuan-MT (`<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`).
     HunyuanDense,
+    /// Z.ai GLM-4 9B instruct (`[gMASK]<sop>` + role tokens).
+    Glm4Instruct,
+    /// Z.ai GLM-4.7 Flash MoE (`/nothink` on user turns, thinking disabled for polished copy).
+    Glm47Flash,
+    /// Z.ai GLM-Z1 reasoning (`<|assistant|><think>` generation prefix).
+    Glm4Z1Reasoning,
 }
+
+#[cfg(feature = "llama")]
+const GLM4_PREFIX: &str = "[gMASK]<sop>";
+
+#[cfg(feature = "llama")]
+fn glm47_user_turn(user: &str) -> String {
+    if user.ends_with("/nothink") {
+        user.to_string()
+    } else {
+        format!("{user}/nothink")
+    }
+}
+
+#[cfg(feature = "llama")]
+fn glm47_assistant_history(text: &str) -> String {
+    const THINK_CLOSE: &str = concat!("</", "redacted_thinking", ">");
+    format!("<|assistant|>{THINK_CLOSE}{text}")
+}
+
+#[cfg(feature = "llama")]
+const GLM4_Z1_GEN_PREFIX: &str = concat!("<|assistant|><", "redacted_thinking", ">");
 
 #[cfg(feature = "llama")]
 fn qwen_chatml_assistant_gen_prefix(disable_thinking: bool) -> String {
@@ -193,6 +243,9 @@ impl ChatTemplate {
             "moonshot_instruct" | "kimi_k2" | "kimi" | "moonlight" => Self::KimiMoonshot,
             "phi4_instruct" | "phi4" | "phi-4" | "phi_4" => Self::Phi4Instruct,
             "hunyuan_dense" | "hunyuan" | "hunyuan-dense" => Self::HunyuanDense,
+            "glm4_instruct" | "glm4" | "chatglm4" => Self::Glm4Instruct,
+            "glm47_flash" | "glm4_flash" | "glm-4.7-flash" => Self::Glm47Flash,
+            "glm4_z1" | "glm_z1" => Self::Glm4Z1Reasoning,
             _ => Self::TinyLlamaV1,
         }
     }
@@ -240,6 +293,16 @@ impl ChatTemplate {
                 format!("<|system|>{system}<|end|><|user|>{user}<|end|><|assistant|>")
             }
             Self::HunyuanDense => format!("<|startoftext|>{system}<|extra_4|>{user}<|extra_0|>"),
+            Self::Glm4Instruct => {
+                format!("{GLM4_PREFIX}<|system|>{system}<|user|>{user}<|assistant|>")
+            }
+            Self::Glm47Flash => {
+                let user_turn = glm47_user_turn(user);
+                format!("{GLM4_PREFIX}<|system|>{system}<|user|>{user_turn}<|assistant|>")
+            }
+            Self::Glm4Z1Reasoning => {
+                format!("{GLM4_PREFIX}<|system|>{system}<|user|>{user}{GLM4_Z1_GEN_PREFIX}")
+            }
         }
     }
 
@@ -402,6 +465,51 @@ impl ChatTemplate {
                 }
                 s
             }
+            Self::Glm4Instruct => {
+                let mut s = format!("{GLM4_PREFIX}<|system|>{system}");
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => {
+                            s.push_str(&format!("<|user|>{text}"));
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&format!("<|assistant|>{text}"));
+                        }
+                    }
+                }
+                s.push_str("<|assistant|>");
+                s
+            }
+            Self::Glm47Flash => {
+                let mut s = format!("{GLM4_PREFIX}<|system|>{system}");
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => {
+                            s.push_str(&format!("<|user|>{}", glm47_user_turn(text)));
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&glm47_assistant_history(text));
+                        }
+                    }
+                }
+                s.push_str("<|assistant|>");
+                s
+            }
+            Self::Glm4Z1Reasoning => {
+                let mut s = format!("{GLM4_PREFIX}<|system|>{system}");
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => {
+                            s.push_str(&format!("<|user|>{text}"));
+                        }
+                        ChatPieceRole::Assistant => {
+                            s.push_str(&glm47_assistant_history(text));
+                        }
+                    }
+                }
+                s.push_str(GLM4_Z1_GEN_PREFIX);
+                s
+            }
         }
     }
 }
@@ -531,6 +639,85 @@ mod llama_chat_template_tests {
         assert!(p.contains("reply<|eos|>"));
         assert!(p.contains("<|startoftext|>second<|extra_0|>"));
     }
+
+    #[test]
+    fn glm4_instruct_single_turn_uses_gmask_and_role_tokens() {
+        let p = ChatTemplate::Glm4Instruct.format_prompt("SYS", "hello");
+        assert_eq!(p, "[gMASK]<sop><|system|>SYS<|user|>hello<|assistant|>");
+    }
+
+    #[test]
+    fn glm4_instruct_chat_continues_turns() {
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::Glm4Instruct.format_prompt_chat("SYS", &pieces);
+        assert!(p.starts_with("[gMASK]<sop><|system|>SYS"));
+        assert!(p.contains("<|user|>first"));
+        assert!(p.contains("<|assistant|>reply"));
+        assert!(p.contains("<|user|>second"));
+        assert!(p.ends_with("<|assistant|>"));
+    }
+
+    #[test]
+    fn glm47_flash_single_turn_appends_nothink() {
+        let p = ChatTemplate::Glm47Flash.format_prompt("SYS", "hello");
+        assert_eq!(
+            p,
+            "[gMASK]<sop><|system|>SYS<|user|>hello/nothink<|assistant|>"
+        );
+    }
+
+    #[test]
+    fn glm47_flash_chat_appends_nothink_and_closes_thinking_in_history() {
+        const THINK_CLOSE: &str = concat!("</", "redacted_thinking", ">");
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::Glm47Flash.format_prompt_chat("SYS", &pieces);
+        assert!(p.contains("<|user|>first/nothink"));
+        assert!(p.contains(&format!("<|assistant|>{THINK_CLOSE}reply")));
+        assert!(p.contains("<|user|>second/nothink"));
+        assert!(p.ends_with("<|assistant|>"));
+    }
+
+    #[test]
+    fn glm4_z1_single_turn_opens_redacted_thinking() {
+        const THINK_OPEN: &str = concat!("<", "redacted_thinking", ">");
+        let p = ChatTemplate::Glm4Z1Reasoning.format_prompt("SYS", "hello");
+        assert_eq!(
+            p,
+            format!("[gMASK]<sop><|system|>SYS<|user|>hello<|assistant|>{THINK_OPEN}")
+        );
+    }
+
+    #[test]
+    fn glm4_z1_chat_ends_with_thinking_prefix() {
+        const THINK_OPEN: &str = concat!("<", "redacted_thinking", ">");
+        let pieces = [(ChatPieceRole::User, "hi")];
+        let p = ChatTemplate::Glm4Z1Reasoning.format_prompt_chat("SYS", &pieces);
+        assert!(p.ends_with(&format!("<|assistant|>{THINK_OPEN}")));
+    }
+
+    #[test]
+    fn glm_catalog_keys_resolve_to_expected_templates() {
+        assert_eq!(
+            ChatTemplate::from_catalog_str("glm4_instruct"),
+            ChatTemplate::Glm4Instruct
+        );
+        assert_eq!(
+            ChatTemplate::from_catalog_str("glm47_flash"),
+            ChatTemplate::Glm47Flash
+        );
+        assert_eq!(
+            ChatTemplate::from_catalog_str("glm4_z1"),
+            ChatTemplate::Glm4Z1Reasoning
+        );
+    }
 }
 
 #[cfg(test)]
@@ -578,6 +765,18 @@ mod tests {
         assert_eq!(
             manifest_template_key_from_hints(["Hunyuan-MT-7B-q4_k_m"]),
             "hunyuan_dense".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["zai-org_GLM-4.7-Flash-Q4_K_M"]),
+            "glm47_flash".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["THUDM_GLM-4-9B-0414-Q4_K_M"]),
+            "glm4_instruct".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["GLM-Z1-9B-0414-Q4_K_M"]),
+            "glm4_z1".to_string()
         );
         assert!(manifest_template_key_from_hints(["zzz", "\n"]).is_empty());
     }

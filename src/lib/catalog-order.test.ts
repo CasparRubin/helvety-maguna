@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CatalogEntry } from "@/lib/types";
+import { EXPECTED_V7_SIZE_ORDER } from "@/lib/catalog-expectations";
 import {
   formatApproxDownloadGb,
   formatCatalogReleaseDate,
@@ -56,18 +57,9 @@ describe("sortCatalogBySizeAscending", () => {
     ]);
   });
 
-  it("orders full shipped catalog v6 by download size ascending", () => {
+  it("orders full shipped catalog v7 by download size ascending", () => {
     const sorted = sortCatalogBySizeAscending(SHIPPED_CATALOG.models);
-    expect(sorted.map((e) => e.id)).toEqual([
-      "phi-4-mini-instruct-q4km",
-      "deepseek-r1-distill-qwen-7b-q4km",
-      "hunyuan-mt-7b-q4km",
-      "ministral-3-8b-instruct-q4km",
-      "qwen3.5-9b-q4km",
-      "gemma-4-12b-it-q4km",
-      "qwen3-14b-q4km",
-      "qwen3.6-27b-q4km",
-    ]);
+    expect(sorted.map((e) => e.id)).toEqual([...EXPECTED_V7_SIZE_ORDER]);
   });
 });
 
@@ -109,5 +101,10 @@ describe("formatApproxDownloadGb", () => {
   it("formats zero and small sizes", () => {
     expect(formatApproxDownloadGb(0)).toBe("~0 GB");
     expect(formatApproxDownloadGb(500_000_000)).toBe("~0.5 GB");
+  });
+
+  it("formats shipped GLM catalog download sizes", () => {
+    expect(formatApproxDownloadGb(6_166_574_464)).toBe("~6.2 GB");
+    expect(formatApproxDownloadGb(18_474_983_296)).toBe("~18.5 GB");
   });
 });

@@ -1,5 +1,7 @@
 const THINK_OPEN = "<" + "think" + ">";
 const THINK_CLOSE = "</" + "think" + ">";
+const GLM_THINK_OPEN = "<" + "redacted_thinking" + ">";
+const GLM_THINK_CLOSE = "</" + "redacted_thinking" + ">";
 const IM_END = "<|" + "im_end" + "|>";
 const IM_SYSTEM = "<|" + "im_system" + "|>";
 const IM_USER = "<|" + "im_user" + "|>";
@@ -42,6 +44,11 @@ const TRUNCATE_MARKERS = [
   "<|channel|>final",
   "<|channel>final",
   "<channel|>",
+  "[gMASK]",
+  "<sop>",
+  GLM_THINK_OPEN,
+  GLM_THINK_CLOSE,
+  "/nothink",
 ];
 
 const CHANNEL_FINAL = /<\|?channel\|?>final\s*/i;
@@ -49,8 +56,22 @@ const CHANNEL_THOUGHT_PREFIX = /^\s*<\|?channel\|?>thought[^\n]*\n?/i;
 const CHANNEL_LEADER = /^<\|?channel\|?>\s*/i;
 const CHANNEL_THOUGHT_START = /^\s*<\|?channel\|?>thought\b/i;
 
+const GLM_THINK_BLOCK = new RegExp(
+  `${GLM_THINK_OPEN}[\\s\\S]*?${GLM_THINK_CLOSE}`,
+  "g",
+);
+
+function stripGlmThinkingBlocks(text: string): string {
+  let s = text.replace(GLM_THINK_BLOCK, "");
+  const openIdx = s.indexOf(GLM_THINK_OPEN);
+  if (openIdx !== -1) {
+    s = s.slice(0, openIdx);
+  }
+  return s;
+}
+
 export type StripChatArtifactsOptions = {
-  /** Keep reasoning traces visible (DeepSeek-R1 and similar). */
+  /** Keep reasoning traces visible (DeepSeek-R1 distill and GLM-Z1 imports). */
   preserveReasoning?: boolean;
 };
 
@@ -60,7 +81,12 @@ export function modelPreservesReasoningTrace(
 ): boolean {
   if (!modelId) return false;
   const lower = modelId.toLowerCase();
-  return lower.includes("deepseek-r1") || lower.includes("deepseek_r1");
+  return (
+    lower.includes("deepseek-r1") ||
+    lower.includes("deepseek_r1") ||
+    lower.includes("glm-z1") ||
+    lower.includes("glm_z1")
+  );
 }
 
 function stripChannelReasoning(text: string): string {
@@ -86,8 +112,8 @@ function stripChannelReasoning(text: string): string {
 
 /**
  * Trim model control tokens, reasoning traces, and chat framing echoes from streamed text.
- * Maguna targets polished copy — thinking is disabled in Qwen/Gemma prompts where possible;
- * this is the safety net when a model still emits traces or special tokens.
+ * Maguna targets polished copy — thinking is disabled in Qwen/Gemma prompts where applicable,
+ * GLM-4.7 Flash uses `/nothink`, and GLM/Qwen/Gemma control tokens are stripped as a safety net.
  */
 export function stripChatArtifacts(
   text: string,
@@ -101,13 +127,19 @@ export function stripChatArtifacts(
     if (thinkCloseIdx !== -1) {
       s = s.slice(thinkCloseIdx + THINK_CLOSE.length);
     }
+    s = stripGlmThinkingBlocks(s);
     s = stripChannelReasoning(s);
   }
 
   let end = s.length;
   const markers = preserveReasoning
     ? TRUNCATE_MARKERS.filter(
-        (m) => m !== THINK_OPEN && m !== THINK_CLOSE && !m.includes("channel"),
+        (m) =>
+          m !== THINK_OPEN &&
+          m !== THINK_CLOSE &&
+          m !== GLM_THINK_OPEN &&
+          m !== GLM_THINK_CLOSE &&
+          !m.includes("channel"),
       )
     : TRUNCATE_MARKERS;
   for (const m of markers) {
