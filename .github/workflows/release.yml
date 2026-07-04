@@ -76,7 +76,7 @@ jobs:
 
       - name: Install macOS build deps (llama-cpp-4)
         if: matrix.platform == 'macos-latest'
-        run: brew install cmake libomp
+        run: brew install cmake
 
       - uses: tauri-apps/tauri-action@v0
         env:
@@ -91,3 +91,7 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Verify macOS bundle has no unpackaged dylibs
+        if: matrix.platform == 'macos-latest'
+        run: node scripts/verify-macos-bundle.mjs

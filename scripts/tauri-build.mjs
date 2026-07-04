@@ -27,4 +27,12 @@ const result = spawnSync("bunx", ["tauri", "build"], {
   stdio: "inherit",
 });
 
+if (result.status === 0 && process.platform === "darwin") {
+  const verify = spawnSync("node", ["scripts/verify-macos-bundle.mjs"], {
+    cwd: root,
+    stdio: "inherit",
+  });
+  process.exit(verify.status ?? 1);
+}
+
 process.exit(result.status ?? 1);
