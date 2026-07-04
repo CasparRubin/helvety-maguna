@@ -18,41 +18,30 @@ pub fn maguna_root(app: &tauri::AppHandle) -> MagunaResult<PathBuf> {
     Ok(base.join("maguna"))
 }
 
-/// `Models/` next to the app install when possible (same folder as the executable on
-/// Windows/Linux; sibling of `Contents` inside a `.app` bundle on macOS). Falls back to
-/// `maguna_root/models` under the app identifier’s data directory when beside `Models` is not
-/// writable or when installs already live only there.
+/// Canonical installed-model storage: `maguna_root/models` under the app identifier’s data
+/// directory. The same path is used for dev, release, and installed builds so weights are not
+/// tied to `target/debug` vs `target/release` vs `/Applications`.
 pub fn models_dir(app: &tauri::AppHandle) -> MagunaResult<PathBuf> {
     let app_data_models = maguna_root(app)?.join("models");
-    let beside = std::env::current_exe()
-        .ok()
-        .and_then(|exe| install_adjacent_models_dir(&exe));
-
-    let Some(beside) = beside else {
-        fs::create_dir_all(&app_data_models)?;
-        return Ok(app_data_models);
-    };
-
-    let app_data_populated = app_data_models.is_dir() && dir_has_installed_model(&app_data_models);
-    let beside_populated = beside.is_dir() && dir_has_installed_model(&beside);
-
-    if beside_populated {
-        return Ok(beside);
-    }
-    if app_data_populated {
-        return Ok(app_data_models);
-    }
-
-    if fs::create_dir_all(&beside).is_ok() {
-        return Ok(beside);
-    }
-
     fs::create_dir_all(&app_data_models)?;
     Ok(app_data_models)
 }
 
+/// Roots that may still hold models from older Maguna versions (beside-exe installs and sibling
+/// Cargo `target/debug` / `target/release` trees while developing from this repo).
+pub fn legacy_models_search_roots(exe: &Path) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Some(beside) = install_adjacent_models_dir(exe) {
+        roots.push(beside);
+    }
+    roots.extend(target_tree_models_dirs(exe));
+    roots.sort();
+    roots.dedup();
+    roots
+}
+
 /// Next to the binary (`…/Helvety Maguna/Models`) or, for a macOS app bundle, `Helvety Maguna.app/Models`.
-fn install_adjacent_models_dir(exe: &Path) -> Option<PathBuf> {
+pub(crate) fn install_adjacent_models_dir(exe: &Path) -> Option<PathBuf> {
     let exe_dir = exe.parent()?;
     if exe_dir.file_name()?.to_str()? == "MacOS" {
         let contents = exe_dir.parent()?;
@@ -64,17 +53,20 @@ fn install_adjacent_models_dir(exe: &Path) -> Option<PathBuf> {
     Some(exe_dir.join("Models"))
 }
 
-fn dir_has_installed_model(root: &Path) -> bool {
-    let Ok(rd) = fs::read_dir(root) else {
-        return false;
-    };
-    for entry in rd.flatten() {
-        let p = entry.path();
-        if p.is_dir() && p.join("manifest.json").is_file() {
-            return true;
+fn target_tree_models_dirs(exe: &Path) -> Vec<PathBuf> {
+    let mut cur = Some(exe);
+    while let Some(p) = cur {
+        if p.file_name().and_then(|n| n.to_str()) == Some("target") {
+            let target = p;
+            return ["debug", "release"]
+                .map(|profile| target.join(profile).join("Models"))
+                .into_iter()
+                .filter(|d| d.is_dir())
+                .collect();
         }
+        cur = p.parent();
     }
-    false
+    vec![]
 }
 
 pub fn tmp_dir(app: &tauri::AppHandle) -> MagunaResult<PathBuf> {
@@ -91,6 +83,17 @@ pub fn catalog_download_partial_filename(model_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tmp_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "maguna-paths-test-{label}-{}-{:?}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+            std::thread::current().id(),
+        ))
+    }
 
     #[test]
     fn install_adjacent_models_dir_macos_bundle() {
@@ -109,6 +112,46 @@ mod tests {
             install_adjacent_models_dir(exe),
             Some(PathBuf::from(r"C:\Program Files\Helvety Maguna\Models"))
         );
+    }
+
+    #[test]
+    fn target_tree_models_dirs_finds_debug_and_release_profiles() {
+        let base = tmp_path("target-tree");
+        let target = base.join("src-tauri").join("target");
+        let debug_models = target.join("debug").join("Models");
+        let release_models = target.join("release").join("Models");
+        fs::create_dir_all(&debug_models).unwrap();
+        fs::create_dir_all(&release_models).unwrap();
+        let exe = target.join("debug").join("maguna");
+
+        let dirs = target_tree_models_dirs(&exe);
+        assert_eq!(dirs.len(), 2);
+        assert!(dirs.contains(&debug_models));
+        assert!(dirs.contains(&release_models));
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn legacy_models_search_roots_includes_macos_bundle_models_dir() {
+        let exe = Path::new("/Applications/Helvety Maguna.app/Contents/MacOS/maguna");
+        let roots = legacy_models_search_roots(exe);
+        assert!(roots.contains(&PathBuf::from("/Applications/Helvety Maguna.app/Models")));
+    }
+
+    #[test]
+    fn legacy_models_search_roots_dedupes_beside_and_target_tree() {
+        let base = tmp_path("legacy-roots");
+        let target = base.join("target");
+        let debug_models = target.join("debug").join("Models");
+        fs::create_dir_all(&debug_models).unwrap();
+        let exe = target.join("debug").join("maguna");
+
+        let roots = legacy_models_search_roots(&exe);
+        assert!(roots.contains(&debug_models));
+        assert!(roots.contains(&target.join("debug").join("Models")));
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

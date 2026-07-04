@@ -27,9 +27,12 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let handle = app.handle().clone();
             app.manage(AppState::new(&handle));
+
+            let _ = storage::migrate_legacy_models(&handle);
 
             let state = app.state::<AppState>();
             let _ = commands::sync_default_model_from_installs(&handle, &state, None);

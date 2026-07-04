@@ -11,6 +11,7 @@ import {
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import type { CatalogEntry, GuardrailsSettings, InstalledModel } from "@/lib/types";
 import { RECOMMENDED_CATALOG_MODEL_ID } from "@/lib/catalog-order";
@@ -18,6 +19,10 @@ import { SHIPPED_CATALOG } from "@/lib/shipped-catalog";
 import * as TauriApi from "@/lib/tauri-api";
 
 import { ModelsPage } from "./ModelsPage";
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn(),
+}));
 
 vi.mock("@/lib/tauri-api", () => ({
   invoke: vi.fn(),
@@ -58,12 +63,23 @@ function mockModelsPageInvoke(g: GuardrailsSettings = guardrailsPayload) {
   }) as typeof TauriApi.invoke);
 }
 
+function withTauriBridge(run: () => void | Promise<void>) {
+  const tauriBridge = { invoke: vi.fn() };
+  (
+    window as unknown as { __TAURI_INTERNALS__: typeof tauriBridge }
+  ).__TAURI_INTERNALS__ = tauriBridge;
+  return Promise.resolve(run()).finally(() => {
+    delete (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  });
+}
+
 describe("ModelsPage", () => {
   afterEach(() => {
     cleanup();
     vi.mocked(TauriApi.invoke).mockReset();
     vi.mocked(TauriApi.listen).mockReset();
     vi.mocked(TauriApi.listen).mockImplementation(() => Promise.resolve(() => {}));
+    vi.mocked(open).mockReset();
   });
 
   it("refresh loads guardrails with catalog and installed models", async () => {
@@ -407,6 +423,141 @@ describe("ModelsPage", () => {
       expect(setCalls).toHaveLength(1);
       expect(setCalls[0]?.[1]).toEqual({
         value: { enabled: true, customText: "ORG POLICY LINE" },
+      });
+    });
+  });
+
+  it("import GGUF section uses file picker instead of a path text field", async () => {
+    mockModelsPageInvoke();
+
+    render(
+      <MemoryRouter initialEntries={["/models"]}>
+        <ModelsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Choose file/i })).toBeInTheDocument();
+      expect(screen.getByText("No file selected")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText(/File path/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/my-model\.gguf/i)).not.toBeInTheDocument();
+  });
+
+  it("import GGUF does nothing when the file picker is cancelled", async () => {
+    await withTauriBridge(async () => {
+      mockModelsPageInvoke();
+      vi.mocked(open).mockResolvedValue(null);
+
+      render(
+        <MemoryRouter initialEntries={["/models"]}>
+          <ModelsPage />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /Choose file/i }),
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /Choose file/i }));
+
+      await waitFor(() => {
+        expect(open).toHaveBeenCalled();
+      });
+
+      expect(screen.getByText("No file selected")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^Import$/i })).toBeDisabled();
+      expect(TauriApi.invoke).not.toHaveBeenCalledWith(
+        "import_gguf",
+        expect.anything(),
+      );
+    });
+  });
+
+  it("import GGUF preserves a custom display name when choosing a file", async () => {
+    await withTauriBridge(async () => {
+      mockModelsPageInvoke();
+      vi.mocked(open).mockResolvedValue("/Users/me/Downloads/other.gguf");
+
+      render(
+        <MemoryRouter initialEntries={["/models"]}>
+          <ModelsPage />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Display name/i)).toBeInTheDocument();
+      });
+
+      fireEvent.change(screen.getByLabelText(/Display name/i), {
+        target: { value: "My Custom Model" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: /Choose file/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText("other.gguf")).toBeInTheDocument();
+        expect(screen.getByLabelText(/Display name/i)).toHaveValue("My Custom Model");
+      });
+    });
+  });
+
+  it("import GGUF uses file picker and invokes import_gguf", async () => {
+    await withTauriBridge(async () => {
+      vi.mocked(open).mockResolvedValue("/Users/me/Downloads/custom.gguf");
+      vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
+        switch (cmd) {
+          case "get_catalog":
+            return Promise.resolve(emptyCatalog);
+          case "list_installed_models":
+            return Promise.resolve(emptyInstalled);
+          case "get_active_model_id":
+            return Promise.resolve(null);
+          case "get_guardrails_settings":
+            return Promise.resolve(guardrailsPayload);
+          case "set_guardrails_settings":
+            return Promise.resolve(undefined);
+          case "import_gguf":
+            return Promise.resolve("import-1");
+          default:
+            return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+        }
+      }) as typeof TauriApi.invoke);
+
+      render(
+        <MemoryRouter initialEntries={["/models"]}>
+          <ModelsPage />
+        </MemoryRouter>,
+      );
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("button", { name: /Choose file/i }),
+        ).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /Choose file/i }));
+
+      await waitFor(() => {
+        expect(open).toHaveBeenCalledWith(
+          expect.objectContaining({
+            multiple: false,
+            directory: false,
+            filters: [{ name: "GGUF model", extensions: ["gguf"] }],
+          }),
+        );
+        expect(screen.getByText("custom.gguf")).toBeInTheDocument();
+        expect(screen.getByLabelText(/Display name/i)).toHaveValue("custom");
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: /^Import$/i }));
+
+      await waitFor(() => {
+        expect(TauriApi.invoke).toHaveBeenCalledWith("import_gguf", {
+          sourcePath: "/Users/me/Downloads/custom.gguf",
+          displayName: "custom",
+        });
       });
     });
   });

@@ -12,12 +12,16 @@ Maguna weights are multi‑GB. **Do not download models** (`huggingface-cli`, `h
 1. **List what is already on disk** (run in repo root):
 
 ```bash
+# Canonical store (dev, release, and installed builds share this path)
+ls "$HOME/Library/Application Support/com.helvety.maguna/maguna/models" 2>/dev/null
+
+# Legacy locations still migrated on startup (older installs / pre–app-data builds)
 find src-tauri/target/debug/Models src-tauri/target/release/Models -name '*.gguf' 2>/dev/null
 ```
 
-During dev, installs usually land under `src-tauri/target/debug/Models/<model_id>/<model_id>.gguf` with a `manifest.json`. Release builds use `src-tauri/target/release/Models/` the same way.
+Installed weights live under **`maguna/models`** in per-user app data (macOS: `~/Library/Application Support/com.helvety.maguna/maguna/models/`). Each model is `<model_id>/<model_id>.gguf` plus `manifest.json` (older installs may use `model.gguf`).
 
-2. **Use an existing GGUF** — pick the smallest installed model that matches the template you need to verify.
+2. **Use an existing GGUF** — pick the smallest installed model that matches the template you need to verify. Prefer the canonical app-data path from step 1.
 
 3. **If nothing is installed**, tell the user which catalog model to install in the app (or ask them to confirm a path). **Do not download it yourself.**
 
@@ -32,8 +36,8 @@ cd src-tauri && cargo run --example spike_load --features llama -- \
   "/absolute/path/to/model.gguf" "<formatted prompt>"
 ```
 
-Prefer the user's installed path from step 1 over any cached copy elsewhere.
+Prefer the user's canonical **`maguna/models`** path from step 1 over legacy `target/*/Models` copies.
 
 ## Cleanup
 
-If you ever downloaded weights for an experiment, **delete those files** when done. Do not leave multi‑GB duplicates beside the user's `Models/` install.
+If you ever downloaded weights for an experiment, **delete those files** when done. Do not leave multi‑GB duplicates outside the user's managed `maguna/models` store.

@@ -823,7 +823,8 @@ export function ModePage() {
                     <Button variant="link" className="h-auto p-0" asChild>
                       <Link to="/models">Open Model library</Link>
                     </Button>{" "}
-                    to download or import a GGUF.
+                    to download or import a GGUF (catalog or{" "}
+                    <strong>Choose file…</strong>).
                   </AlertDescription>
                 </Alert>
               ) : modelBinding === null ? (

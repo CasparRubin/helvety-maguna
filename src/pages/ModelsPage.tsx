@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { open } from "@tauri-apps/plugin-dialog";
 import { invoke, listen } from "@/lib/tauri-api";
+import { ggufBasename, suggestedImportDisplayName } from "@/lib/gguf-import";
+import { isTauri } from "@/lib/tauri-runtime";
 import {
   FolderOpen,
   Trash2,
@@ -73,6 +76,7 @@ export function ModelsPage() {
   const [error, setError] = useState<string | null>(null);
   const [importPath, setImportPath] = useState("");
   const [importName, setImportName] = useState("Imported model");
+  const [importing, setImporting] = useState(false);
   const [settingDefaultModelId, setSettingDefaultModelId] = useState<string | null>(
     null,
   );
@@ -162,6 +166,54 @@ export function ModelsPage() {
     [refresh, settingDefaultModelId],
   );
 
+  const pickGgufFile = useCallback(async () => {
+    if (!isTauri()) {
+      setError("Import is only available in the desktop app.");
+      return;
+    }
+    setError(null);
+    try {
+      const selected = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "GGUF model", extensions: ["gguf"] }],
+        title: "Choose a GGUF file",
+      });
+      if (selected === null || Array.isArray(selected)) {
+        return;
+      }
+      setImportPath(selected);
+      setImportName((current) =>
+        current === "Imported model" || !current.trim()
+          ? suggestedImportDisplayName(selected)
+          : current,
+      );
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  const runImport = useCallback(async () => {
+    if (!importPath.trim() || importing) {
+      return;
+    }
+    setError(null);
+    setImporting(true);
+    try {
+      await invoke("import_gguf", {
+        sourcePath: importPath,
+        displayName: importName,
+      });
+      setImportPath("");
+      setImportName("Imported model");
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setImporting(false);
+    }
+  }, [importName, importPath, importing, refresh]);
+
   const saveGuardrails = useCallback(async () => {
     if (guardrailsSaving) return;
     setGuardrailsSaving(true);
@@ -190,10 +242,11 @@ export function ModelsPage() {
         <p className="text-sm text-muted-foreground">
           Pick a model, download or import the GGUF, then set it as default if you want
           every mode to use it unless you choose otherwise on that mode&apos;s page.
-          While a catalog download runs, that card&apos;s <strong>Download</strong>{" "}
-          button shows <strong>Downloading…</strong> (with a percentage when known),
-          then <strong>Finishing install…</strong>; the progress card on this page also
-          tracks the stream and the rename-or-copy step into your model folder (large
+          Installed weights live in per-user app data and survive app updates. While a
+          catalog download runs, that card&apos;s <strong>Download</strong> button shows{" "}
+          <strong>Downloading…</strong> (with a percentage when known), then{" "}
+          <strong>Finishing install…</strong>; the progress card on this page also
+          tracks the stream and the rename-or-copy step into managed storage (large
           models can take minutes, especially across volumes).
         </p>
       </header>
@@ -231,13 +284,11 @@ export function ModelsPage() {
                     {downloadProgress.modelId}
                   </span>
                   {" — "}
-                  Renaming or copying the weights into your model library (from
-                  Maguna&apos;s temporary download folder when it differs from{" "}
-                  <code className="text-xs">Models</code>). This step can take a long
-                  time for multi-gigabyte files—especially copying from app data (on
-                  Windows, often under <code className="text-xs">AppData\Roaming</code>{" "}
-                  for this app) across to another drive. Leave the app open until this
-                  card disappears.
+                  Renaming or copying the weights into managed storage (
+                  <code className="text-xs">maguna/models</code>). This step can take a
+                  long time for multi-gigabyte files—especially when the temporary
+                  download file and the models folder are on different drives. Leave the
+                  app open until this card disappears.
                 </>
               ) : (
                 <>
@@ -274,7 +325,8 @@ export function ModelsPage() {
           <CardDescription>
             The <strong>default</strong> model applies until a mode picks another
             installed GGUF in <strong>Edit configuration</strong> on that mode&apos;s
-            page (or clears the override to use this default again).
+            page (or clears the override to use this default again). Weights are stored
+            under <code className="text-xs">maguna/models</code> in per-user app data.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -525,21 +577,33 @@ export function ModelsPage() {
             Import GGUF
           </CardTitle>
           <CardDescription>
-            Copy a <code className="text-xs">.gguf</code> file into Maguna&apos;s
-            managed storage (full path on this computer).
+            Use <strong>Choose file…</strong> to pick a{" "}
+            <code className="text-xs">.gguf</code> on this computer; Maguna copies it
+            into managed storage (<code className="text-xs">maguna/models</code>).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="grid flex-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="import-path">File path</Label>
-              <Input
-                id="import-path"
-                value={importPath}
-                onChange={(e) => setImportPath(e.target.value)}
-                placeholder="D:\Models\my-model.gguf"
-                autoComplete="off"
-              />
+              <Label htmlFor="import-file-label">GGUF file</Label>
+              <div className="flex min-h-9 flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void pickGgufFile()}
+                >
+                  Choose file…
+                </Button>
+                <span
+                  id="import-file-label"
+                  className={cn(
+                    "min-w-0 flex-1 truncate text-sm",
+                    importPath ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  {importPath ? ggufBasename(importPath) : "No file selected"}
+                </span>
+              </div>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="import-name">Display name</Label>
@@ -552,21 +616,17 @@ export function ModelsPage() {
           </div>
           <Button
             type="button"
-            onClick={() => {
-              setError(null);
-              void invoke("import_gguf", {
-                sourcePath: importPath,
-                displayName: importName,
-              })
-                .then(() => {
-                  setImportPath("");
-                  return refresh();
-                })
-                .catch((e) => setError(String(e)));
-            }}
-            disabled={!importPath.trim()}
+            onClick={() => void runImport()}
+            disabled={!importPath.trim() || importing}
           >
-            Import
+            {importing ? (
+              <>
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                Importing…
+              </>
+            ) : (
+              "Import"
+            )}
           </Button>
         </CardContent>
       </Card>

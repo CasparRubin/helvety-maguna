@@ -323,7 +323,7 @@ pub async fn download_model(
     let staging_partial_path = paths::tmp_dir(&app)
         .map_err(|e| e.to_string())?
         .join(paths::catalog_download_partial_filename(&entry.id));
-    // Network stream is done; rename or copy into `Models/` can take a long time (especially
+    // Network stream is done; rename or copy into `maguna/models` can take a long time (especially
     // across volumes). Emit `installing` so the progress card and catalog Download button
     // switch to Finishing install… instead of looking hung.
     let _ = app.emit(

@@ -40,7 +40,7 @@ pub fn weights_filename(model_id: &str) -> String {
 }
 
 /// Removes the catalog download staging file after a successful cross-volume `copy` into
-/// `Models/`. Must succeed or we leak a second full copy of multi-GB weights under `tmp/`.
+/// `maguna/models`. Must succeed or we leak a second full copy of multi-GB weights under `tmp/`.
 ///
 /// Retries on Windows where AV or transient locks often cause an initial `remove_file` failure.
 pub(crate) fn remove_download_staging_file(path: &Path) -> MagunaResult<()> {
@@ -58,7 +58,7 @@ pub(crate) fn remove_download_staging_file(path: &Path) -> MagunaResult<()> {
         }
     }
     Err(MagunaError::msg(format!(
-        "could not remove temporary weights file after copying to Models (you may have duplicate copies; delete manually at {}): {}",
+        "could not remove temporary weights file after copying to maguna/models (you may have duplicate copies; delete manually at {}): {}",
         path.display(),
         last_err
             .map(|e| e.to_string())
@@ -173,20 +173,78 @@ fn validate_model_id(model_id: &str) -> MagunaResult<()> {
     Ok(())
 }
 
-/// Directories that may contain an installed model folder (`models_dir()` and app-data
-/// `maguna/models` when they differ).
+/// Directories that may contain an installed model folder (canonical app-data store plus any
+/// legacy beside-exe or Cargo `target` trees).
 fn model_install_roots(app: &tauri::AppHandle) -> MagunaResult<Vec<PathBuf>> {
     let current = paths::models_dir(app)?;
-    let fallback = paths::maguna_root(app)?.join("models");
-    if current == fallback {
-        return Ok(vec![current]);
+    let exe = std::env::current_exe().map_err(MagunaError::from)?;
+    let mut roots = vec![current];
+    for legacy in paths::legacy_models_search_roots(&exe) {
+        if !roots.contains(&legacy) {
+            roots.push(legacy);
+        }
     }
-    Ok(vec![current, fallback])
+    Ok(roots)
+}
+
+/// Moves installed models from legacy storage roots into the canonical app-data `models` folder.
+/// Safe to run on every startup: skips models already present in the canonical store.
+pub fn migrate_legacy_models(app: &tauri::AppHandle) -> MagunaResult<()> {
+    let canonical = paths::models_dir(app)?;
+    let exe = std::env::current_exe().map_err(MagunaError::from)?;
+    let mut sources = paths::legacy_models_search_roots(&exe);
+    sources.retain(|p| p != &canonical);
+
+    for source in sources {
+        migrate_models_from_root(&source, &canonical)?;
+    }
+    Ok(())
+}
+
+fn migrate_models_from_root(source: &Path, canonical: &Path) -> MagunaResult<()> {
+    if !source.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(source).map_err(MagunaError::from)? {
+        let entry = entry.map_err(MagunaError::from)?;
+        let path = entry.path();
+        if !path.is_dir() || !manifest_path(&path).exists() {
+            continue;
+        }
+        let dest = canonical.join(entry.file_name());
+        if dest.exists() {
+            continue;
+        }
+        if fs::rename(&path, &dest).is_err() {
+            copy_model_dir(&path, &dest)?;
+            fs::remove_dir_all(&path)?;
+        }
+        tracing::info!(
+            model_id = %entry.file_name().to_string_lossy(),
+            from = %source.display(),
+            "migrated legacy model to canonical storage"
+        );
+    }
+    Ok(())
+}
+
+fn copy_model_dir(src: &Path, dest: &Path) -> MagunaResult<()> {
+    fs::create_dir_all(dest)?;
+    for entry in fs::read_dir(src).map_err(MagunaError::from)? {
+        let entry = entry.map_err(MagunaError::from)?;
+        let dest_path = dest.join(entry.file_name());
+        let file_type = entry.file_type().map_err(MagunaError::from)?;
+        if file_type.is_dir() {
+            copy_model_dir(&entry.path(), &dest_path)?;
+        } else {
+            fs::copy(entry.path(), &dest_path).map_err(MagunaError::from)?;
+        }
+    }
+    Ok(())
 }
 
 /// Permanently removes the model from disk: the GGUF weight file, `manifest.json`, and the
-/// whole per-model directory under Maguna storage (checks beside-exe `Models` and app-data
-/// `maguna/models` when those roots differ).
+/// whole per-model directory under canonical app-data storage and any legacy install roots.
 pub fn delete_installed(app: &tauri::AppHandle, model_id: &str) -> MagunaResult<()> {
     validate_model_id(model_id)?;
     for root in model_install_roots(app)? {
@@ -244,6 +302,66 @@ mod tests {
     #[test]
     fn weights_filename_appends_dot_gguf() {
         assert_eq!(weights_filename("qwen2.5-7b"), "qwen2.5-7b.gguf");
+    }
+
+    #[test]
+    fn migrate_legacy_models_moves_beside_install_into_canonical() {
+        let base = tmp_model_dir();
+        let legacy_root = base.join("legacy");
+        let canonical = base.join("canonical");
+        fs::create_dir_all(&legacy_root).unwrap();
+        fs::create_dir_all(&canonical).unwrap();
+
+        let model_dir = legacy_root.join("gemma-4");
+        fs::create_dir_all(&model_dir).unwrap();
+        let weight = model_dir.join("gemma-4.gguf");
+        fs::write(&weight, b"weights").unwrap();
+        fs::write(
+            model_dir.join("manifest.json"),
+            r#"{"id":"gemma-4","display_name":"Gemma","gguf_path":"gemma-4.gguf","chat_template":""}"#,
+        )
+        .unwrap();
+
+        migrate_models_from_root(&legacy_root, &canonical).unwrap();
+
+        assert!(!model_dir.exists());
+        assert!(canonical.join("gemma-4").join("manifest.json").is_file());
+        assert!(canonical.join("gemma-4").join("gemma-4.gguf").is_file());
+
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn migrate_legacy_models_skips_when_canonical_already_has_model() {
+        let base = tmp_model_dir();
+        let legacy_root = base.join("legacy");
+        let canonical = base.join("canonical");
+        fs::create_dir_all(&legacy_root).unwrap();
+        fs::create_dir_all(&canonical).unwrap();
+
+        for (root, bytes) in [
+            (&legacy_root, &b"legacy"[..]),
+            (&canonical, &b"canonical"[..]),
+        ] {
+            let model_dir = root.join("gemma-4");
+            fs::create_dir_all(&model_dir).unwrap();
+            fs::write(model_dir.join("gemma-4.gguf"), bytes).unwrap();
+            fs::write(
+                model_dir.join("manifest.json"),
+                r#"{"id":"gemma-4","display_name":"Gemma","gguf_path":"gemma-4.gguf","chat_template":""}"#,
+            )
+            .unwrap();
+        }
+
+        migrate_models_from_root(&legacy_root, &canonical).unwrap();
+
+        assert!(legacy_root.join("gemma-4").is_dir());
+        assert_eq!(
+            fs::read(canonical.join("gemma-4").join("gemma-4.gguf")).unwrap(),
+            b"canonical".to_vec()
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
