@@ -27,7 +27,10 @@ if (otool.status !== 0) {
 }
 
 const forbidden = [
-  { pattern: /@rpath\//, reason: "unpackaged @rpath dylib (enable static llama-cpp-4)" },
+  {
+    pattern: /@rpath\//,
+    reason: "unpackaged @rpath dylib (enable static llama-cpp-4)",
+  },
   { pattern: /libggml/, reason: "dynamic ggml library" },
   { pattern: /libllama/, reason: "dynamic llama library" },
   { pattern: /\/opt\/homebrew\//, reason: "Homebrew runtime dependency" },

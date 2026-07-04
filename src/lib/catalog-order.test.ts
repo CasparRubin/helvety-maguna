@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CatalogEntry } from "@/lib/types";
-import { EXPECTED_V7_SIZE_ORDER } from "@/lib/catalog-expectations";
+import { EXPECTED_V8_SIZE_ORDER } from "@/lib/catalog-expectations";
 import {
   formatApproxDownloadGb,
   formatCatalogReleaseDate,
@@ -57,9 +57,9 @@ describe("sortCatalogBySizeAscending", () => {
     ]);
   });
 
-  it("orders full shipped catalog v7 by download size ascending", () => {
+  it("orders full shipped catalog v8 by download size ascending", () => {
     const sorted = sortCatalogBySizeAscending(SHIPPED_CATALOG.models);
-    expect(sorted.map((e) => e.id)).toEqual([...EXPECTED_V7_SIZE_ORDER]);
+    expect(sorted.map((e) => e.id)).toEqual([...EXPECTED_V8_SIZE_ORDER]);
   });
 });
 
@@ -103,8 +103,9 @@ describe("formatApproxDownloadGb", () => {
     expect(formatApproxDownloadGb(500_000_000)).toBe("~0.5 GB");
   });
 
-  it("formats shipped GLM catalog download sizes", () => {
+  it("formats shipped GLM and Gemma MoE catalog download sizes", () => {
     expect(formatApproxDownloadGb(6_166_574_464)).toBe("~6.2 GB");
+    expect(formatApproxDownloadGb(17_035_038_112)).toBe("~17 GB");
     expect(formatApproxDownloadGb(18_474_983_296)).toBe("~18.5 GB");
   });
 });

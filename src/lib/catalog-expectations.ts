@@ -1,12 +1,22 @@
 /**
- * Single source of truth for bundled catalog v7 test expectations.
+ * Single source of truth for bundled catalog v8 test expectations.
  * Keep in sync with `src-tauri/src/catalog.rs` and `src-tauri/resources/catalog.json`.
  */
-export const EXPECTED_V7_CATALOG_MODELS = [
+export const EXPECTED_V8_CATALOG_MODELS = [
+  {
+    id: "ministral-3-3b-instruct-q4km",
+    chat_template: "mistral3_instruct",
+    size_bytes: 2_146_498_528,
+  },
   {
     id: "phi-4-mini-instruct-q4km",
     chat_template: "phi4_instruct",
     size_bytes: 2_491_874_688,
+  },
+  {
+    id: "qwen3.5-4b-q4km",
+    chat_template: "qwen2_instruct",
+    size_bytes: 3_013_027_808,
   },
   {
     id: "deepseek-r1-distill-qwen-7b-q4km",
@@ -39,14 +49,19 @@ export const EXPECTED_V7_CATALOG_MODELS = [
     size_bytes: 7_381_382_048,
   },
   {
-    id: "qwen3-14b-q4km",
-    chat_template: "qwen2_instruct",
-    size_bytes: 9_001_753_632,
+    id: "ministral-3-14b-instruct-q4km",
+    chat_template: "mistral3_instruct",
+    size_bytes: 8_239_068_576,
+  },
+  {
+    id: "gemma-4-26b-a4b-it-q4km",
+    chat_template: "gemma4_it",
+    size_bytes: 17_035_038_112,
   },
   {
     id: "qwen3.6-27b-q4km",
     chat_template: "qwen2_instruct",
-    size_bytes: 16_547_398_784,
+    size_bytes: 17_984_872_960,
   },
   {
     id: "glm-4.7-flash-q4km",
@@ -56,7 +71,7 @@ export const EXPECTED_V7_CATALOG_MODELS = [
 ] as const;
 
 /** Catalog ids in ascending `size_bytes` order (matches Rust `catalog_size_order_when_sorted`). */
-export const EXPECTED_V7_SIZE_ORDER = EXPECTED_V7_CATALOG_MODELS.map((m) => m.id);
+export const EXPECTED_V8_SIZE_ORDER = EXPECTED_V8_CATALOG_MODELS.map((m) => m.id);
 
 export const LEGACY_V4_CATALOG_IDS = [
   "qwen2.5-14b-instruct-q4km",
@@ -66,3 +81,5 @@ export const LEGACY_V4_CATALOG_IDS = [
 ] as const;
 
 export const LEGACY_V5_CATALOG_IDS = ["qwen3-8b-q4km"] as const;
+
+export const LEGACY_V7_CATALOG_IDS = ["qwen3-14b-q4km"] as const;

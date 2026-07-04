@@ -1,29 +1,30 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  EXPECTED_V7_CATALOG_MODELS,
-  EXPECTED_V7_SIZE_ORDER,
+  EXPECTED_V8_CATALOG_MODELS,
+  EXPECTED_V8_SIZE_ORDER,
   LEGACY_V4_CATALOG_IDS,
   LEGACY_V5_CATALOG_IDS,
+  LEGACY_V7_CATALOG_IDS,
 } from "@/lib/catalog-expectations";
 import { SHIPPED_CATALOG } from "@/lib/shipped-catalog";
 
 describe("SHIPPED_CATALOG", () => {
-  it("is catalog schema version 7 with ten models", () => {
-    expect(SHIPPED_CATALOG.version).toBe(7);
-    expect(SHIPPED_CATALOG.models).toHaveLength(10);
+  it("is catalog schema version 8 with thirteen models", () => {
+    expect(SHIPPED_CATALOG.version).toBe(8);
+    expect(SHIPPED_CATALOG.models).toHaveLength(13);
   });
 
-  it("lists every v7 catalog id with the expected chat template and size", () => {
+  it("lists every v8 catalog id with the expected chat template and size", () => {
     const byId = new Map(SHIPPED_CATALOG.models.map((m) => [m.id, m]));
-    for (const expected of EXPECTED_V7_CATALOG_MODELS) {
+    for (const expected of EXPECTED_V8_CATALOG_MODELS) {
       const model = byId.get(expected.id);
       expect(model, `missing catalog model ${expected.id}`).toBeDefined();
       expect(model!.chat_template).toBe(expected.chat_template);
       expect(model!.size_bytes).toBe(expected.size_bytes);
     }
     expect([...byId.keys()].sort()).toEqual(
-      EXPECTED_V7_CATALOG_MODELS.map((m) => m.id).sort(),
+      EXPECTED_V8_CATALOG_MODELS.map((m) => m.id).sort(),
     );
   });
 
@@ -31,7 +32,7 @@ describe("SHIPPED_CATALOG", () => {
     const sorted = [...SHIPPED_CATALOG.models].sort(
       (a, b) => a.size_bytes - b.size_bytes,
     );
-    expect(sorted.map((m) => m.id)).toEqual([...EXPECTED_V7_SIZE_ORDER]);
+    expect(sorted.map((m) => m.id)).toEqual([...EXPECTED_V8_SIZE_ORDER]);
   });
 
   it("includes required metadata on every catalog entry", () => {
@@ -60,6 +61,13 @@ describe("SHIPPED_CATALOG", () => {
   it("does not list retired v5 catalog ids", () => {
     const ids = SHIPPED_CATALOG.models.map((m) => m.id);
     for (const legacy of LEGACY_V5_CATALOG_IDS) {
+      expect(ids).not.toContain(legacy);
+    }
+  });
+
+  it("does not list retired v7 catalog ids", () => {
+    const ids = SHIPPED_CATALOG.models.map((m) => m.id);
+    for (const legacy of LEGACY_V7_CATALOG_IDS) {
       expect(ids).not.toContain(legacy);
     }
   });

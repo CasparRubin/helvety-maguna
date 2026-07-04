@@ -24,10 +24,17 @@ function parseDeploymentTarget(line) {
   return m?.[1]?.trim() ?? null;
 }
 
-function isStale(deploy) {
+function parseCxxFlags(line) {
+  const m = line.match(/^CMAKE_CXX_FLAGS:STRING=(.+)$/);
+  return m?.[1]?.trim() ?? null;
+}
+
+function isStale(deploy, cxxFlags) {
   if (process.platform !== "darwin") return false;
-  if (!deploy) return true;
-  return deploy !== MIN_DEPLOY;
+  if (!deploy || deploy !== MIN_DEPLOY) return true;
+  // rustc/cmake can pin 10.13 in CXX flags while DEPLOYMENT_TARGET says 10.15 — breaks std::filesystem.
+  if (cxxFlags?.includes("mmacosx-version-min=10.13")) return true;
+  return false;
 }
 
 async function purgeReleaseLlamaBuildArtifacts() {
@@ -61,14 +68,14 @@ for (const entry of await readdir(root, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
   const cacheFile = path.join(root, entry.name, "build", "CMakeCache.txt");
   let deploy;
+  let cxxFlags;
   try {
     const text = await readFile(cacheFile, "utf8");
     for (const line of text.split("\n")) {
-      const parsed = parseDeploymentTarget(line);
-      if (parsed) {
-        deploy = parsed;
-        break;
-      }
+      const parsedDeploy = parseDeploymentTarget(line);
+      if (parsedDeploy) deploy = parsedDeploy;
+      const parsedCxx = parseCxxFlags(line);
+      if (parsedCxx) cxxFlags = parsedCxx;
     }
   } catch {
     if (process.platform === "darwin") {
@@ -77,11 +84,12 @@ for (const entry of await readdir(root, { withFileTypes: true })) {
       continue;
     }
   }
-  if (isStale(deploy)) {
+  if (isStale(deploy, cxxFlags)) {
     const dir = path.join(root, entry.name);
-    console.warn(
-      `Removing stale llama-cpp cmake cache (${dir}, CMAKE_OSX_DEPLOYMENT_TARGET=${deploy ?? "unset"}; need ${MIN_DEPLOY})`,
-    );
+    const reason = cxxFlags?.includes("mmacosx-version-min=10.13")
+      ? "CMAKE_CXX_FLAGS contains mmacosx-version-min=10.13"
+      : `CMAKE_OSX_DEPLOYMENT_TARGET=${deploy ?? "unset"}; need ${MIN_DEPLOY}`;
+    console.warn(`Removing stale llama-cpp cmake cache (${dir}, ${reason})`);
     await rm(dir, { recursive: true, force: true });
     removedAny = true;
   }
