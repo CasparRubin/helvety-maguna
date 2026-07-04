@@ -985,47 +985,48 @@ export function ModePage() {
                       Shift+Enter for a new line).
                     </p>
                   ) : (
-                    chatMessages.map((m, i) => (
-                      <div
-                        key={`${i}-${m.role}`}
-                        className={cn(
-                          "relative min-w-0 rounded-lg border pl-3 pr-10 py-2",
-                          m.role === "user"
-                            ? "ml-6 border-muted-foreground/20 bg-background"
-                            : "mr-6 border-primary/25 bg-muted/40",
-                        )}
-                      >
-                        <CopyTextControl
-                          text={m.content}
-                          className="absolute right-1.5 top-1.5 z-10"
-                        />
-                        <div className="min-w-0 space-y-1">
-                          <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                            {m.role === "user" ? (
-                              "You"
-                            ) : (
-                              <span
-                                className={cn(
-                                  busy &&
-                                    i === chatMessages.length - 1 &&
-                                    "maguna-label-thinking",
-                                )}
-                              >
-                                Maguna
-                              </span>
-                            )}
-                          </p>
-                          <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap break-words font-mono text-sm">
-                            {m.content ||
-                              (m.role === "assistant" && busy
-                                ? inferPhase === "prefill"
-                                  ? "…"
-                                  : ""
-                                : m.content)}
-                          </pre>
+                    chatMessages.map((m, i) => {
+                      const hasContent = m.content.trim() !== "";
+                      const isThinking =
+                        m.role === "assistant" &&
+                        busy &&
+                        i === chatMessages.length - 1 &&
+                        !hasContent;
+
+                      return (
+                        <div
+                          key={`${i}-${m.role}`}
+                          className={cn(
+                            "relative min-w-0 rounded-lg border pl-3 py-2",
+                            hasContent ? "pr-10" : "pr-3",
+                            m.role === "user"
+                              ? "ml-6 border-muted-foreground/20 bg-background"
+                              : "mr-6 border-primary/25 bg-muted/40",
+                          )}
+                        >
+                          {hasContent ? (
+                            <CopyTextControl
+                              text={m.content}
+                              className="absolute right-1.5 top-1.5 z-10"
+                            />
+                          ) : null}
+                          <div className="min-w-0 space-y-1">
+                            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                              {m.role === "user" ? "You" : "Maguna"}
+                            </p>
+                            <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap break-words font-mono text-sm">
+                              {hasContent ? (
+                                m.content
+                              ) : isThinking ? (
+                                <span className="maguna-label-thinking">
+                                  Thinking...
+                                </span>
+                              ) : null}
+                            </pre>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                   <div ref={transcriptEndRef} />
                 </div>
@@ -1125,8 +1126,8 @@ export function ModePage() {
               ) : null}
               {busy && inferPhase === "prefill" ? (
                 <p className="text-xs text-muted-foreground">
-                  Absorbing the prompt is often the slowest part; streamed text appears
-                  once prefill finishes.
+                  The bubble shows Thinking... until answer text streams in; absorbing
+                  the prompt is often the slowest part.
                 </p>
               ) : null}
               {runDurationMs !== null ? (
@@ -1296,8 +1297,8 @@ export function ModePage() {
             ) : null}
             {busy && inferPhase === "prefill" ? (
               <p className="text-xs text-muted-foreground">
-                Absorbing the prompt is often the slowest part; streamed text appears
-                once prefill finishes.
+                Output fills in once generation starts; absorbing the prompt is often
+                the slowest part.
               </p>
             ) : null}
             {runDurationMs !== null ? (
@@ -1357,32 +1358,26 @@ export function ModePage() {
                             {new Date(row.createdAt).toLocaleString()}
                           </p>
                           <div className="space-y-1">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              Input
-                            </p>
-                            <div className="relative">
-                              <CopyTextControl
-                                text={row.input}
-                                className="absolute right-1.5 top-1.5 z-10"
-                              />
-                              <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 pr-10 font-mono text-xs">
-                                {row.input}
-                              </pre>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                Input
+                              </p>
+                              <CopyTextControl text={row.input} className="h-6 w-6" />
                             </div>
+                            <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 font-mono text-xs">
+                              {row.input}
+                            </pre>
                           </div>
                           <div className="space-y-1">
-                            <p className="text-xs font-medium text-muted-foreground">
-                              Output
-                            </p>
-                            <div className="relative">
-                              <CopyTextControl
-                                text={row.output}
-                                className="absolute right-1.5 top-1.5 z-10"
-                              />
-                              <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 pr-10 font-mono text-xs">
-                                {row.output}
-                              </pre>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                Output
+                              </p>
+                              <CopyTextControl text={row.output} className="h-6 w-6" />
                             </div>
+                            <pre className="whitespace-pre-wrap break-words rounded-md bg-muted/50 p-2 font-mono text-xs">
+                              {row.output}
+                            </pre>
                           </div>
                         </div>
                         <Button

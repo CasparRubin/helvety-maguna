@@ -427,8 +427,9 @@ export function ModelsPage() {
           Catalog
         </h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Smallest downloads first. Approximate size is on each card; one pick is
-          highlighted as recommended for most writing and translation use.
+          Smallest downloads first. Approximate size is on each card;{" "}
+          <strong>Gemma 4 12B</strong> is highlighted as the recommended starting pick
+          for most writing and translation use.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           {catalogSorted.map((entry) => {

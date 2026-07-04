@@ -112,7 +112,7 @@ describe("ModelsPage", () => {
     });
   });
 
-  it("shows Recommended badge on Ministral 3 8B when catalog is loaded", async () => {
+  it("shows Recommended badge only on Gemma 4 12B when catalog is loaded", async () => {
     vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
       switch (cmd) {
         case "get_catalog":
@@ -137,9 +137,19 @@ describe("ModelsPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Recommended")).toBeInTheDocument();
+      expect(screen.getAllByText("Recommended")).toHaveLength(1);
+      expect(screen.getAllByText("Gemma 4 12B").length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText("Ministral 3 8B")).toBeInTheDocument();
     });
+
+    const gemmaCard = screen.getByText("Recommended").closest(".rounded-xl");
+    const ministralCard = screen.getByText("Ministral 3 8B").closest(".rounded-xl");
+    expect(gemmaCard).toBeTruthy();
+    expect(ministralCard).toBeTruthy();
+    expect(
+      within(gemmaCard as HTMLElement).getByText("Recommended"),
+    ).toBeInTheDocument();
+    expect(within(ministralCard as HTMLElement).queryByText("Recommended")).toBeNull();
   });
 
   it("lists GLM catalog models when the shipped catalog is loaded", async () => {
@@ -199,10 +209,10 @@ describe("ModelsPage", () => {
   });
 
   it("shows download progress in the catalog button label", async () => {
-    const ministral = SHIPPED_CATALOG.models.find(
+    const recommendedEntry = SHIPPED_CATALOG.models.find(
       (m) => m.id === RECOMMENDED_CATALOG_MODEL_ID,
     );
-    expect(ministral).toBeDefined();
+    expect(recommendedEntry).toBeDefined();
 
     let progressHandler:
       | ((ev: {
@@ -225,7 +235,7 @@ describe("ModelsPage", () => {
     vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
       switch (cmd) {
         case "get_catalog":
-          return Promise.resolve([ministral!]);
+          return Promise.resolve([recommendedEntry!]);
         case "list_installed_models":
           return Promise.resolve(emptyInstalled);
         case "get_active_model_id":
@@ -246,7 +256,7 @@ describe("ModelsPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Ministral 3 8B")).toBeInTheDocument();
+      expect(screen.getByText("Gemma 4 12B")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /^Download$/i }));
@@ -309,8 +319,8 @@ describe("ModelsPage", () => {
         payload: {
           model_id: RECOMMENDED_CATALOG_MODEL_ID,
           phase: "installing",
-          received: ministral!.size_bytes,
-          total: ministral!.size_bytes,
+          received: recommendedEntry!.size_bytes,
+          total: recommendedEntry!.size_bytes,
         },
       });
     });

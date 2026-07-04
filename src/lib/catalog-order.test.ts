@@ -64,7 +64,8 @@ describe("sortCatalogBySizeAscending", () => {
 });
 
 describe("RECOMMENDED_CATALOG_MODEL_ID", () => {
-  it("matches a model in the shipped catalog", () => {
+  it("points at Gemma 4 12B in the shipped catalog", () => {
+    expect(RECOMMENDED_CATALOG_MODEL_ID).toBe("gemma-4-12b-it-q4km");
     const ids = SHIPPED_CATALOG.models.map((m) => m.id);
     expect(ids).toContain(RECOMMENDED_CATALOG_MODEL_ID);
   });

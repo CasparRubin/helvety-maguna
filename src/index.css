@@ -68,7 +68,7 @@
     }
   }
 
-  /* Left-to-right shimmer on the chat assistant label while the model runs (prefill + stream). */
+  /* Left-to-right shimmer on the chat “Thinking...” placeholder (class name is historical). */
   .maguna-label-thinking {
     background-image: linear-gradient(
       90deg,

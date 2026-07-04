@@ -1,10 +1,10 @@
 import type { CatalogEntry } from "@/lib/types";
 
 /**
- * Catalog entry id that shows the “Recommended” badge and card highlight.
+ * Catalog entry id that shows the “Recommended” badge and card highlight (Gemma 4 12B).
  * Independent of sort order (catalog is listed smallest → largest download).
  */
-export const RECOMMENDED_CATALOG_MODEL_ID = "ministral-3-8b-instruct-q4km";
+export const RECOMMENDED_CATALOG_MODEL_ID = "gemma-4-12b-it-q4km";
 
 /** Sort by `size_bytes` ascending, then `display_name` for stable ties. */
 export function sortCatalogBySizeAscending(entries: CatalogEntry[]): CatalogEntry[] {

@@ -7,6 +7,7 @@ import {
   LEGACY_V5_CATALOG_IDS,
   LEGACY_V7_CATALOG_IDS,
 } from "@/lib/catalog-expectations";
+import { RECOMMENDED_CATALOG_MODEL_ID } from "@/lib/catalog-order";
 import { SHIPPED_CATALOG } from "@/lib/shipped-catalog";
 
 describe("SHIPPED_CATALOG", () => {
@@ -79,5 +80,21 @@ describe("SHIPPED_CATALOG", () => {
       expect(model!.languages).toContain("en");
       expect(model!.languages).toContain("de");
     }
+  });
+
+  it("marks only Gemma 4 12B as the recommended starting model in catalog copy", () => {
+    const recommended = SHIPPED_CATALOG.models.filter((m) =>
+      m.description.startsWith("Recommended starting model:"),
+    );
+    expect(recommended).toHaveLength(1);
+    expect(recommended[0]?.id).toBe(RECOMMENDED_CATALOG_MODEL_ID);
+    expect(recommended[0]?.display_name).toBe("Gemma 4 12B");
+
+    const ministral8b = SHIPPED_CATALOG.models.find(
+      (m) => m.id === "ministral-3-8b-instruct-q4km",
+    );
+    expect(ministral8b?.description.startsWith("Recommended starting model:")).toBe(
+      false,
+    );
   });
 });

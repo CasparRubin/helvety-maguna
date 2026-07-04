@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -12,13 +13,26 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ModeDefinition } from "@/lib/types";
+import type { InferencePhase } from "@/hooks/useInferenceListeners";
 import * as tauriApi from "@/lib/tauri-api";
 import { loadChatSessions, saveChatSessions } from "@/lib/chat-session-archive";
+import { saveModeRunArchive } from "@/lib/mode-run-archive";
 
 import { ModePage } from "./ModePage";
 
+type InferenceHandlers = {
+  onChunk: (s: string) => void;
+  onDone: () => void;
+  onError: (s: string) => void;
+  onPhase?: (phase: InferencePhase) => void;
+};
+
+const inferenceHandlers: { current: InferenceHandlers | null } = { current: null };
+
 vi.mock("@/hooks/useInferenceListeners", () => ({
-  useInferenceListeners: vi.fn(),
+  useInferenceListeners: vi.fn((handlers: InferenceHandlers) => {
+    inferenceHandlers.current = handlers;
+  }),
 }));
 
 const modesNavState: {
@@ -41,6 +55,14 @@ vi.mock("@/lib/tauri-api", () => ({
 }));
 
 const readText = vi.fn();
+const writeText = vi.fn();
+
+function chatAssistantBubble() {
+  const thinking = screen.queryByText("Thinking...");
+  const content = screen.queryByText(/^Maguna$/)?.closest(".rounded-lg");
+  if (thinking) return thinking.closest(".rounded-lg");
+  return content ?? null;
+}
 
 function renderAtMode(path: string) {
   return render(
@@ -63,13 +85,16 @@ function renderAtMode(path: string) {
 
 describe("ModePage", () => {
   beforeEach(() => {
+    inferenceHandlers.current = null;
     readText.mockReset();
     readText.mockResolvedValue("from-clipboard");
+    writeText.mockReset();
+    writeText.mockResolvedValue(undefined);
     vi.stubGlobal("navigator", {
       ...globalThis.navigator,
       clipboard: {
         readText,
-        writeText: vi.fn().mockResolvedValue(undefined),
+        writeText,
       },
     } as unknown as Navigator);
 
@@ -133,6 +158,68 @@ describe("ModePage", () => {
 
     // Assistant label in the chat transcript chrome (not the app shell sidebar).
     expect(await screen.findByText(/^Maguna$/)).toBeInTheDocument();
+    const thinking = screen.getByText("Thinking...");
+    expect(thinking).toBeInTheDocument();
+    expect(thinking).toHaveClass("maguna-label-thinking");
+    expect(screen.getByText(/^Maguna$/)).not.toHaveClass("maguna-label-thinking");
+
+    const bubble = chatAssistantBubble();
+    expect(bubble).toBeTruthy();
+    expect(
+      within(bubble as HTMLElement).queryByRole("button", { name: /copy/i }),
+    ).toBeNull();
+  });
+
+  it("replaces Thinking... with streamed text and shows copy when chunks arrive", async () => {
+    const modeId = "vitest-chat-stream";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Chat stream",
+        system_prompt: "",
+        prompt_layout: "chat",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    vi.mocked(tauriApi.invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_installed_models") return [];
+      if (cmd === "get_mode_model_binding") {
+        return { effective_model_id: "model-1", override_model_id: null };
+      }
+      if (cmd === "run_mode_chat") return new Promise(() => {});
+      throw new Error(`unhandled invoke in test: ${cmd}`);
+    });
+
+    renderAtMode(`/mode/${modeId}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: /paste and run/i }));
+
+    await waitFor(() => {
+      expect(inferenceHandlers.current).not.toBeNull();
+      expect(screen.getByText("Thinking...")).toBeInTheDocument();
+    });
+
+    act(() => {
+      inferenceHandlers.current!.onChunk("Hello from the model");
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Hello from the model")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
+
+    const bubble = chatAssistantBubble();
+    expect(bubble).toBeTruthy();
+    const copy = within(bubble as HTMLElement).getByRole("button", {
+      name: /copy to clipboard/i,
+    });
+    expect(copy).toBeEnabled();
+    fireEvent.click(copy);
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("Hello from the model");
+    });
   });
 
   it("Send in chat invokes run_mode_chat with composer text", async () => {
@@ -421,5 +508,55 @@ describe("ModePage", () => {
     });
     expect(screen.getByText("Keep me")).toBeInTheDocument();
     expect(loadChatSessions(modeId)).toHaveLength(1);
+  });
+
+  it("archive Input and Output rows expose copy buttons beside their labels", async () => {
+    const modeId = "vitest-archive-copy";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Archive copy",
+        system_prompt: "",
+        prompt_layout: "plain",
+        max_tokens: 64,
+        builtin: false,
+      },
+    ];
+
+    saveModeRunArchive(modeId, [
+      {
+        id: "run-1",
+        createdAt: 1_700_000_000_000,
+        input: "fix typo",
+        output: "fixed typo",
+      },
+    ]);
+
+    renderAtMode(`/mode/${modeId}`);
+
+    expect(await screen.findByText("fix typo")).toBeInTheDocument();
+    expect(screen.getByText("fixed typo")).toBeInTheDocument();
+
+    const archiveHeading = screen.getByRole("heading", { name: /^archive$/i });
+    const archiveSection = archiveHeading.closest("div")?.parentElement;
+    expect(archiveSection).toBeTruthy();
+
+    const archiveCopyButtons = within(archiveSection as HTMLElement).getAllByRole(
+      "button",
+      { name: /copy to clipboard/i },
+    );
+    expect(archiveCopyButtons).toHaveLength(2);
+    expect(archiveCopyButtons[0]).toBeEnabled();
+    expect(archiveCopyButtons[1]).toBeEnabled();
+
+    fireEvent.click(archiveCopyButtons[0]!);
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("fix typo");
+    });
+
+    fireEvent.click(archiveCopyButtons[1]!);
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith("fixed typo");
+    });
   });
 });
