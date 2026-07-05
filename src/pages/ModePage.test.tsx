@@ -83,6 +83,19 @@ function renderAtMode(path: string) {
   );
 }
 
+async function clickSelectOption(name: string) {
+  const options = await screen.findAllByRole("option", { name });
+  const activeOption =
+    options.find((option) => option.getAttribute("tabindex") === "0") ??
+    options[options.length - 1];
+
+  expect(activeOption).toBeDefined();
+  fireEvent.pointerDown(activeOption as HTMLElement);
+  fireEvent.mouseDown(activeOption as HTMLElement);
+  fireEvent.mouseUp(activeOption as HTMLElement);
+  fireEvent.click(activeOption as HTMLElement);
+}
+
 describe("ModePage", () => {
   beforeEach(() => {
     inferenceHandlers.current = null;
@@ -415,6 +428,103 @@ describe("ModePage", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByLabelText(/^language in$/i)).toBeInTheDocument();
     expect(within(dialog).getByLabelText(/^language out$/i)).toBeInTheDocument();
+  });
+
+  it("language select changes are used when running translate modes", async () => {
+    const modeId = "vitest-dialog-translate-selects";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Translate selects",
+        system_prompt: "",
+        prompt_layout: "translate",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    renderAtMode(`/mode/${modeId}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit configuration/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByLabelText(/^language in$/i));
+    await clickSelectOption("German");
+
+    fireEvent.click(within(dialog).getByLabelText(/^language out$/i));
+    await clickSelectOption("English");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /^close$/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /paste and run/i }));
+
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith(
+        "run_mode",
+        expect.objectContaining({
+          modeId,
+          input: "from-clipboard",
+          fromLang: "de",
+          toLang: "en",
+        }),
+      );
+    });
+  });
+
+  it("installed model select changes call set_mode_model_override", async () => {
+    const modeId = "vitest-dialog-model-select";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Model select",
+        system_prompt: "",
+        prompt_layout: "plain",
+        max_tokens: 64,
+        builtin: false,
+      },
+    ];
+
+    vi.mocked(tauriApi.invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_installed_models") {
+        return [
+          {
+            id: "model-1",
+            display_name: "Model One",
+            gguf_path: "/models/model-1.gguf",
+            sha256: null,
+          },
+          {
+            id: "model-2",
+            display_name: "Model Two",
+            gguf_path: "/models/model-2.gguf",
+            sha256: null,
+          },
+        ];
+      }
+      if (cmd === "get_mode_model_binding") {
+        return {
+          effective_model_id: "model-1",
+          override_model_id: null,
+        };
+      }
+      if (cmd === "set_mode_model_override") return undefined;
+      if (cmd === "run_mode" || cmd === "run_mode_chat") return undefined;
+      throw new Error(`unhandled invoke in test: ${cmd}`);
+    });
+
+    renderAtMode(`/mode/${modeId}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit configuration/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(await within(dialog).findByLabelText(/^installed model$/i));
+    await clickSelectOption("Model Two");
+
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith("set_mode_model_override", {
+        modeId,
+        modelId: "model-2",
+      });
+    });
   });
 
   it("Clear archive opens confirm dialog and deletes all chat sessions on confirm", async () => {

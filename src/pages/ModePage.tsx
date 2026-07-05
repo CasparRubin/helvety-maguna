@@ -86,6 +86,8 @@ const LANGS = [
   { value: "de", label: "German" },
 ];
 
+const LANG_SELECT_ITEMS = LANGS.map((l) => ({ label: l.label, value: l.value }));
+
 const DEFAULT_MODE_ROUTE = "/mode/chat";
 
 type ClearArchiveTarget = "chat" | "runs";
@@ -377,6 +379,17 @@ export function ModePage() {
   }, [busy]);
 
   const layout = draft?.prompt_layout ?? "translate";
+
+  const modelSelectItems = useMemo(
+    () => [
+      { label: "Choose an installed model…", value: null },
+      ...installed.map((m) => ({
+        label: compactModelDisplayName(m.display_name),
+        value: m.id,
+      })),
+    ],
+    [installed],
+  );
 
   // Chat transcript height: keep the Message block inside `#main-content`'s visible area
   // (matches App shell). Observes layout/composer size; see README "Chat page".
@@ -670,8 +683,13 @@ export function ModePage() {
         <Alert>
           <AlertDescription>
             This mode does not exist or was removed.{" "}
-            <Button variant="link" className="h-auto p-0" asChild>
-              <Link to={DEFAULT_MODE_ROUTE}>Go to Chat</Link>
+            <Button
+              variant="link"
+              className="h-auto p-0"
+              render={<Link to={DEFAULT_MODE_ROUTE} />}
+              nativeButton={false}
+            >
+              Go to Chat
             </Button>
           </AlertDescription>
         </Alert>
@@ -738,10 +756,7 @@ export function ModePage() {
       </Dialog>
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
-        <DialogContent
-          aria-describedby={undefined}
-          className="max-h-[min(90vh,800px)] gap-0 overflow-y-auto p-0 sm:max-w-xl"
-        >
+        <DialogContent className="max-h-[min(90vh,800px)] gap-0 overflow-y-auto p-0 sm:max-w-xl">
           <div className="flex flex-col gap-6 p-6 pb-4">
             <DialogHeader className="space-y-2 pr-8">
               <DialogTitle>Mode configuration</DialogTitle>
@@ -780,8 +795,14 @@ export function ModePage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="cfg-from">Language in</Label>
-                    <Select value={fromLang} onValueChange={setFromLang}>
-                      <SelectTrigger id="cfg-from">
+                    <Select
+                      items={LANG_SELECT_ITEMS}
+                      value={fromLang}
+                      onValueChange={(v) => {
+                        if (v != null) setFromLang(v);
+                      }}
+                    >
+                      <SelectTrigger id="cfg-from" className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -795,8 +816,14 @@ export function ModePage() {
                   </div>
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="cfg-to">Language out</Label>
-                    <Select value={toLang} onValueChange={setToLang}>
-                      <SelectTrigger id="cfg-to">
+                    <Select
+                      items={LANG_SELECT_ITEMS}
+                      value={toLang}
+                      onValueChange={(v) => {
+                        if (v != null) setToLang(v);
+                      }}
+                    >
+                      <SelectTrigger id="cfg-to" className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -820,8 +847,13 @@ export function ModePage() {
                 <Alert>
                   <AlertDescription>
                     No models installed.{" "}
-                    <Button variant="link" className="h-auto p-0" asChild>
-                      <Link to="/models">Open Model library</Link>
+                    <Button
+                      variant="link"
+                      className="h-auto p-0"
+                      render={<Link to="/models" />}
+                      nativeButton={false}
+                    >
+                      Open Model library
                     </Button>{" "}
                     to download or import a GGUF (catalog or{" "}
                     <strong>Choose file…</strong>).
@@ -836,11 +868,14 @@ export function ModePage() {
                   <div className="flex flex-col gap-2">
                     <Label htmlFor={`mode-model-${modeId}`}>Installed model</Label>
                     <Select
-                      value={modelBinding.effective_model_id ?? undefined}
-                      onValueChange={(v) => void onPickModel(v)}
+                      items={modelSelectItems}
+                      value={modelBinding.effective_model_id ?? null}
+                      onValueChange={(v) => {
+                        if (v != null) void onPickModel(v);
+                      }}
                     >
-                      <SelectTrigger id={`mode-model-${modeId}`}>
-                        <SelectValue placeholder="Choose an installed model…" />
+                      <SelectTrigger id={`mode-model-${modeId}`} className="w-full">
+                        <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
                         {installed.map((m) => (

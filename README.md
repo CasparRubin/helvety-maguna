@@ -11,7 +11,7 @@ On first launch the app opens **Chat**; other routes redirect **`/`**, **`/modes
 | Layer            | Tech                                                                                                                                              |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Shell            | [Tauri 2](https://v2.tauri.app/) + Rust                                                                                                           |
-| UI               | React 19, TypeScript, Vite, Tailwind, [shadcn/ui](https://ui.shadcn.com/) (New York)                                                              |
+| UI               | React 19, TypeScript, Vite, Tailwind CSS 3, [shadcn/ui](https://ui.shadcn.com/) (Base UI primitives, nova preset, Geist Variable)                 |
 | On-device engine | [llama.cpp](https://github.com/ggml-org/llama.cpp) via [`llama-cpp-4`](https://crates.io/crates/llama-cpp-4) (enabled by default in `Cargo.toml`) |
 
 ## Requirements
@@ -25,7 +25,7 @@ On first launch the app opens **Chat**; other routes redirect **`/`**, **`/modes
 
 ### Dependency policy
 
-Direct dependencies are kept on **latest stable within the current major** (Bun **1.3.14**, Tauri **2.11**, React **19**, Vite **7**, etc.). Major bumps deferred until a dedicated migration: **ESLint 10**, **Tailwind 4**, **TypeScript 6**, **Vite 8** / **Vitest 4**.
+Direct dependencies are kept on **latest stable within the current major** (Bun **1.3.14**, Tauri **2.11**, React **19**, Vite **7**, etc.). Major bumps deferred until a dedicated migration: **ESLint 10**, **TypeScript 6**, **Tailwind CSS 4**, **Vite 8** / **Vitest 4**.
 
 ## Quick start
 
@@ -74,20 +74,21 @@ Treat these as portable user data backups if you reinstall the shell.
 
 ### Scripts
 
-| Command                    | Purpose                                                                                                                                                           |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run dev`              | Full desktop app (default Rust features include the on-device engine)                                                                                             |
-| `bun run dev:windows`      | Windows: runs `scripts/dev-windows.ps1` (finds LLVM, sets `LIBCLANG_PATH` / `NM_PATH`, then `tauri dev`)                                                          |
-| `bun run dev:shell`        | Same UI, Rust **`--no-default-features`**: catalog, download, and import still work; **Run / Send inference fails** until a full (`llama`) build runs that binary |
-| `bun run dev:vite`         | Vite dev server only (no Tauri; `invoke` / `listen` are not available)                                                                                            |
-| `bun run build`            | Production frontend only (`tsc` + Vite → `dist/`; Tauri `beforeBuildCommand` uses this)                                                                           |
-| `bun run test`             | Vitest (unit + component tests; component tests opt into `jsdom` per file)                                                                                        |
-| `bun run lint`             | ESLint on the TypeScript/React tree                                                                                                                               |
-| `bun run build:app`        | **Recommended** production bundle: purges stale llama-cpp cmake caches, pins macOS 10.15+ for release, then `tauri build`                                         |
-| `bun run tauri build`      | Full desktop installer/bundle (on macOS prefer **`build:app`** so cmake uses 10.15+, not a stale 10.13 cache)                                                     |
-| `bun run build:windows`    | Windows: runs `scripts/build-windows.ps1` then `tauri build` (same LLVM setup as `dev:windows`)                                                                   |
-| `bun run check`            | Format, lint, Vitest, frontend `build`, then Rust clippy + tests with **`--no-default-features`** (matches CI; fast compile without libclang)                     |
-| `bun run check:rust:llama` | Rust **chat-template** tests with the `llama` feature (family-specific prompt formatting); macOS CI runs this after `check`                                       |
+| Command                    | Purpose                                                                                                                                                             |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`              | Full desktop app (default Rust features include the on-device engine)                                                                                               |
+| `bun run dev:windows`      | Windows: runs `scripts/dev-windows.ps1` (finds LLVM, sets `LIBCLANG_PATH` / `NM_PATH`, then `tauri dev`)                                                            |
+| `bun run dev:shell`        | Same UI, Rust **`--no-default-features`**: catalog, download, and import still work; **Run / Send inference fails** until a full (`llama`) build runs that binary   |
+| `bun run dev:vite`         | Vite dev server only (no Tauri; `invoke` / `listen` are not available)                                                                                              |
+| `bun run build`            | Production frontend only (`tsc` + Vite → `dist/`; Tauri `beforeBuildCommand` uses this)                                                                             |
+| `bun run test`             | Vitest (unit + component tests; component tests opt into `jsdom` per file)                                                                                          |
+| `bun run lint`             | ESLint on the TypeScript/React tree                                                                                                                                 |
+| `bun run check:no-radix`   | Fails if legacy shadcn/Radix UI patterns reappear in source, lockfile, or docs scanned by [`scripts/check-no-radix.mjs`](scripts/check-no-radix.mjs)                |
+| `bun run build:app`        | **Recommended** production bundle: purges stale llama-cpp cmake caches, pins macOS 10.15+ for release, then `tauri build`                                           |
+| `bun run tauri build`      | Full desktop installer/bundle (on macOS prefer **`build:app`** so cmake uses 10.15+, not a stale 10.13 cache)                                                       |
+| `bun run build:windows`    | Windows: runs `scripts/build-windows.ps1` then `tauri build` (same LLVM setup as `dev:windows`)                                                                     |
+| `bun run check`            | Format, lint, **`check:no-radix`**, Vitest, frontend `build`, then Rust clippy + tests with **`--no-default-features`** (matches CI; fast compile without libclang) |
+| `bun run check:rust:llama` | Rust **chat-template** tests with the `llama` feature (family-specific prompt formatting); macOS CI runs this after `check`                                         |
 
 ### Contributors: engine-free Rust checks
 

@@ -11,4 +11,8 @@ if (typeof globalThis.ResizeObserver === "undefined") {
 
 if (typeof Element !== "undefined") {
   Element.prototype.scrollIntoView = vi.fn();
+  // Base UI ScrollArea calls getAnimations in jsdom; provide a no-op stub.
+  if (typeof Element.prototype.getAnimations !== "function") {
+    Element.prototype.getAnimations = () => [];
+  }
 }

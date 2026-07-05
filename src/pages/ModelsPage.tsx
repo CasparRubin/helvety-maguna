@@ -310,7 +310,7 @@ export function ModelsPage() {
                 <div className="h-full w-full animate-pulse bg-primary/50" />
               </div>
             ) : (
-              <Progress value={pct} />
+              <Progress value={pct ?? null} />
             )}
           </CardContent>
         </Card>
