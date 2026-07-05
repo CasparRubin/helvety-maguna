@@ -8,11 +8,11 @@ On first launch the app opens **Chat**; other routes redirect **`/`**, **`/modes
 
 ## Stack
 
-| Layer            | Tech                                                                                                                                              |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shell            | [Tauri 2](https://v2.tauri.app/) + Rust                                                                                                           |
-| UI               | React 19, TypeScript, Vite, Tailwind CSS 3, [shadcn/ui](https://ui.shadcn.com/) (Base UI primitives, nova preset, Geist Variable)                 |
-| On-device engine | [llama.cpp](https://github.com/ggml-org/llama.cpp) via [`llama-cpp-4`](https://crates.io/crates/llama-cpp-4) (enabled by default in `Cargo.toml`) |
+| Layer            | Tech                                                                                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shell            | [Tauri 2](https://v2.tauri.app/) + Rust                                                                                                                             |
+| UI               | React 19, TypeScript, Vite, Tailwind CSS 3, [shadcn/ui](https://ui.shadcn.com/) **base-nova** on [@base-ui/react](https://base-ui.com/) (not Radix), Geist Variable |
+| On-device engine | [llama.cpp](https://github.com/ggml-org/llama.cpp) via [`llama-cpp-4`](https://crates.io/crates/llama-cpp-4) (enabled by default in `Cargo.toml`)                   |
 
 ## Requirements
 
@@ -43,7 +43,7 @@ That starts the full app: **Model library** (catalog, download, import, default 
 - **Modes (configuration):** each mode page shows the mode **name**, **Edit configuration** (top right, opens a **dialog** titled **Mode configuration**), then the workspace (**conversation** + composer for Chat, or **Input** / **Output** otherwise). In the dialog: **Name**, **System prompt**, **Model**, **Save mode**, **Duplicate**, **Reset to default** (built-in modes only), and **Delete** (custom modes only; built-ins cannot be removed). **Correction** and **Translate** layouts also include **Language in** and **Language out** (German and English today). **Chat** omits those selectors: reply language follows each user message automatically (fallback English when unclear). Inference always uses weights on device only—not a hosted API inside the app.
 - **Correction / Translate pages:** compact **Input** and **Output** areas with **copy** controls in the top-right of each live field; **Enter** runs (**Shift+Enter** adds a newline). Each successful finished run appears in **Archive** on that mode’s page (copy buttons sit beside each archived **Input** / **Output** label); delete individual rows or **Clear archive** (in-app confirmation dialog).
 - **Chat page:** **conversation** transcript where assistant turns are labeled **Maguna** in the UI (roles in storage and when calling the backend remain `user` / `assistant`). While a reply is generating, the bubble shows a shimmering **Thinking...** placeholder until streamed text arrives; a **copy** control appears on assistant bubbles once there is text to copy. **Composer** (**Enter** sends, **Shift+Enter** newline), **Send**, **Cancel**, **Paste and run**, and **New chat**. Transcript height tracks the main pane (`#main-content`) so the **Message** area and actions usually stay visible above **Archive**—scroll the page when you need the archive list. Completed replies update the current thread and are saved under **Archive** as **sessions** (full message history); open a row to continue, delete one chat, or **Clear archive** (in-app confirmation dialog). Chat storage is separate per mode id (`localStorage` keys `maguna.chatSessions.v1:<modeId>` for Chat; correction/translate archives use `maguna.modeRunArchive.v1:<modeId>`).
-- **Appearance:** sidebar **Light** / **Dark**; unsaved installs follow the OS. Choice is persisted (same key as [`index.html`](index.html)—see [`THEME_STORAGE_KEY`](src/context/theme-context.tsx) in [`src/context/theme-context.tsx`](src/context/theme-context.tsx)).
+- **Appearance:** sidebar **Light** / **Dark**. Before a preference is saved, appearance follows the OS on each launch; once you pick **Light** or **Dark**, that choice is persisted in `localStorage` (key in [`index.html`](index.html)—see [`THEME_STORAGE_KEY`](src/context/theme-context.tsx)).
 
 ### Where models are stored
 
@@ -74,21 +74,25 @@ Treat these as portable user data backups if you reinstall the shell.
 
 ### Scripts
 
-| Command                    | Purpose                                                                                                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run dev`              | Full desktop app (default Rust features include the on-device engine)                                                                                               |
-| `bun run dev:windows`      | Windows: runs `scripts/dev-windows.ps1` (finds LLVM, sets `LIBCLANG_PATH` / `NM_PATH`, then `tauri dev`)                                                            |
-| `bun run dev:shell`        | Same UI, Rust **`--no-default-features`**: catalog, download, and import still work; **Run / Send inference fails** until a full (`llama`) build runs that binary   |
-| `bun run dev:vite`         | Vite dev server only (no Tauri; `invoke` / `listen` are not available)                                                                                              |
-| `bun run build`            | Production frontend only (`tsc` + Vite → `dist/`; Tauri `beforeBuildCommand` uses this)                                                                             |
-| `bun run test`             | Vitest (unit + component tests; component tests opt into `jsdom` per file)                                                                                          |
-| `bun run lint`             | ESLint on the TypeScript/React tree                                                                                                                                 |
-| `bun run check:no-radix`   | Fails if legacy shadcn/Radix UI patterns reappear in source, lockfile, or docs scanned by [`scripts/check-no-radix.mjs`](scripts/check-no-radix.mjs)                |
-| `bun run build:app`        | **Recommended** production bundle: purges stale llama-cpp cmake caches, pins macOS 10.15+ for release, then `tauri build`                                           |
-| `bun run tauri build`      | Full desktop installer/bundle (on macOS prefer **`build:app`** so cmake uses 10.15+, not a stale 10.13 cache)                                                       |
-| `bun run build:windows`    | Windows: runs `scripts/build-windows.ps1` then `tauri build` (same LLVM setup as `dev:windows`)                                                                     |
-| `bun run check`            | Format, lint, **`check:no-radix`**, Vitest, frontend `build`, then Rust clippy + tests with **`--no-default-features`** (matches CI; fast compile without libclang) |
-| `bun run check:rust:llama` | Rust **chat-template** tests with the `llama` feature (family-specific prompt formatting); macOS CI runs this after `check`                                         |
+| Command                    | Purpose                                                                                                                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run dev`              | Full desktop app (default Rust features include the on-device engine)                                                                                                                     |
+| `bun run dev:windows`      | Windows: runs `scripts/dev-windows.ps1` (finds LLVM, sets `LIBCLANG_PATH` / `NM_PATH`, then `tauri dev`)                                                                                  |
+| `bun run dev:shell`        | Same UI, Rust **`--no-default-features`**: catalog, download, and import still work; **Run / Send inference fails** until a full (`llama`) build runs that binary                         |
+| `bun run dev:vite`         | Vite dev server only (no Tauri; `invoke` / `listen` are not available)                                                                                                                    |
+| `bun run build`            | Production frontend only (`tsc` + Vite → `dist/`; Tauri `beforeBuildCommand` uses this)                                                                                                   |
+| `bun run test`             | Vitest (unit + component tests; component tests opt into `jsdom` per file)                                                                                                                |
+| `bun run lint`             | ESLint on the TypeScript/React tree                                                                                                                                                       |
+| `bun run check:no-radix`   | Fails if Radix packages, legacy shadcn presets, or other forbidden UI patterns reappear in scanned source, lockfile, or docs ([`scripts/check-no-radix.mjs`](scripts/check-no-radix.mjs)) |
+| `bun run build:app`        | **Recommended** production bundle: purges stale llama-cpp cmake caches, pins macOS 10.15+ for release, then `tauri build`                                                                 |
+| `bun run tauri build`      | Full desktop installer/bundle (on macOS prefer **`build:app`** so cmake uses 10.15+, not a stale 10.13 cache)                                                                             |
+| `bun run build:windows`    | Windows: runs `scripts/build-windows.ps1` then `tauri build` (same LLVM setup as `dev:windows`)                                                                                           |
+| `bun run check`            | Format, lint, **`check:no-radix`**, Vitest, frontend `build`, then Rust clippy + tests with **`--no-default-features`** (matches CI; fast compile without libclang)                       |
+| `bun run check:rust:llama` | Rust **chat-template** tests with the `llama` feature (family-specific prompt formatting); macOS CI runs this after `check`                                                               |
+
+### Frontend (UI)
+
+Maguna’s React UI uses **shadcn/ui** with the **`base-nova`** preset on **@base-ui/react** headless primitives (Radix is not used). Styled components live under [`src/components/ui/`](src/components/ui/); theme tokens are in [`src/index.css`](src/index.css) and [`tailwind.config.js`](tailwind.config.js). The app stays on **Tailwind CSS 3** (see dependency policy above)—nova component sources are kept on TW3-compatible class syntax. Run **`bun run check:no-radix`** before merging UI work so deprecated headless UI patterns do not creep back in.
 
 ### Contributors: engine-free Rust checks
 

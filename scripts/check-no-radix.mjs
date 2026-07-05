@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** CI guard: Maguna UI uses shadcn base-nova on @base-ui/react only (no Radix / new-york). */
+/** CI guard: Maguna UI is shadcn base-nova on @base-ui/react only — no Radix packages or legacy shadcn presets in scanned files. */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";

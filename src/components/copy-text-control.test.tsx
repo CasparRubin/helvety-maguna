@@ -50,6 +50,13 @@ describe("CopyTextControl", () => {
     ).toBe("Copied");
   });
 
+  it("uses the shadcn Button ghost icon control", () => {
+    render(<CopyTextControl text="payload" />);
+    const button = screen.getByRole("button", { name: /copy to clipboard/i });
+    expect(button).toHaveAttribute("data-slot", "button");
+    expect(button.className).toMatch(/rounded-lg/);
+  });
+
   it("does not enter copied state when clipboard write fails", async () => {
     writeText.mockRejectedValueOnce(new Error("denied"));
     render(<CopyTextControl text="x" />);

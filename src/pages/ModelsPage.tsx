@@ -301,17 +301,12 @@ export function ModelsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {downloadProgress.phase === "installing" ? (
-              <div
-                className="h-2 w-full overflow-hidden rounded-full bg-primary/20"
-                role="progressbar"
-                aria-valuetext="Installing"
-              >
-                <div className="h-full w-full animate-pulse bg-primary/50" />
-              </div>
-            ) : (
-              <Progress value={pct ?? null} />
-            )}
+            <Progress
+              value={downloadProgress.phase === "installing" ? null : (pct ?? null)}
+              aria-valuetext={
+                downloadProgress.phase === "installing" ? "Installing" : undefined
+              }
+            />
           </CardContent>
         </Card>
       ) : null}
@@ -475,7 +470,7 @@ export function ModelsPage() {
       <Separator />
 
       <section aria-labelledby="catalog-heading">
-        <h3 id="catalog-heading" className="mb-1 text-lg font-medium">
+        <h3 id="catalog-heading" className="mb-1 text-sm font-medium">
           Catalog
         </h3>
         <p className="mb-4 text-sm text-muted-foreground">

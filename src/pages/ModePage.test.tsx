@@ -527,6 +527,70 @@ describe("ModePage", () => {
     });
   });
 
+  it("opens a saved chat session when its archive row is activated", async () => {
+    const modeId = "vitest-chat-open-session";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Chat open session",
+        system_prompt: "",
+        prompt_layout: "chat",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    saveChatSessions(modeId, [
+      {
+        id: "session-open",
+        createdAt: 1,
+        updatedAt: 1,
+        title: "Prior thread",
+        messages: [
+          { role: "user", content: "earlier question" },
+          { role: "assistant", content: "earlier answer" },
+        ],
+      },
+    ]);
+
+    renderAtMode(`/mode/${modeId}`);
+
+    const sessionButton = await screen.findByRole("button", { name: /Prior thread/i });
+    fireEvent.click(sessionButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("earlier question")).toBeInTheDocument();
+      expect(screen.getByText("earlier answer")).toBeInTheDocument();
+      expect(screen.getByText(/• open/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/no messages yet/i)).not.toBeInTheDocument();
+  });
+
+  it("closes Edit configuration dialog via the dialog close control", async () => {
+    const modeId = "vitest-dialog-close";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Dialog close",
+        system_prompt: "",
+        prompt_layout: "plain",
+        max_tokens: 64,
+        builtin: false,
+      },
+    ];
+
+    renderAtMode(`/mode/${modeId}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit configuration/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^close$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+
   it("Clear archive opens confirm dialog and deletes all chat sessions on confirm", async () => {
     const modeId = "vitest-chat-clear";
     modesNavState.modes = [

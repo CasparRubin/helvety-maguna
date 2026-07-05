@@ -190,7 +190,7 @@ export function SettingsPage() {
   }, [load]);
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-8">
+    <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <header>
         <h2 className="text-2xl font-semibold tracking-tight">Settings</h2>
         <p className="mt-1 text-sm text-muted-foreground">

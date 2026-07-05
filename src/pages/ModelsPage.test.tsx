@@ -38,8 +38,8 @@ const guardrailsPayload: GuardrailsSettings = {
 };
 
 function downloadProgressCard() {
-  const bar = screen.getByRole("progressbar");
-  const card = bar.closest(".rounded-xl");
+  const progressBar = screen.getByRole("progressbar");
+  const card = progressBar.closest("[data-slot='card']");
   expect(card).toBeTruthy();
   return card as HTMLElement;
 }
@@ -282,6 +282,9 @@ describe("ModelsPage", () => {
         screen.getByRole("button", { name: /Downloading… 0%/i }),
       ).toBeInTheDocument();
       expect(
+        within(downloadProgressCard()).getByRole("progressbar"),
+      ).toBeInTheDocument();
+      expect(
         within(downloadProgressCard()).getByText(/Downloading… 0%/i),
       ).toBeInTheDocument();
     });
@@ -349,6 +352,9 @@ describe("ModelsPage", () => {
         within(downloadProgressCard()).getByText(/Finishing install…/i),
       ).toBeInTheDocument();
     });
+
+    const progressBar = within(downloadProgressCard()).getByRole("progressbar");
+    expect(progressBar).toHaveAttribute("aria-valuetext", "Installing");
   });
 
   it("disables other catalog download buttons while one model is downloading", async () => {
@@ -500,6 +506,36 @@ describe("ModelsPage", () => {
         expect(screen.getByText("other.gguf")).toBeInTheDocument();
         expect(screen.getByLabelText(/Display name/i)).toHaveValue("My Custom Model");
       });
+    });
+  });
+
+  it("lists catalog models under a Catalog section heading", async () => {
+    vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string) => {
+      switch (cmd) {
+        case "get_catalog":
+          return Promise.resolve(SHIPPED_CATALOG.models);
+        case "list_installed_models":
+          return Promise.resolve(emptyInstalled);
+        case "get_active_model_id":
+          return Promise.resolve(null);
+        case "get_guardrails_settings":
+          return Promise.resolve(guardrailsPayload);
+        case "set_guardrails_settings":
+          return Promise.resolve(undefined);
+        default:
+          return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+      }
+    }) as typeof TauriApi.invoke);
+
+    render(
+      <MemoryRouter initialEntries={["/models"]}>
+        <ModelsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /^Catalog$/i })).toBeInTheDocument();
+      expect(screen.getByText("Gemma 4 12B")).toBeInTheDocument();
     });
   });
 

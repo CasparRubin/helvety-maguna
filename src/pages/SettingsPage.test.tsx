@@ -120,7 +120,7 @@ describe("SettingsPage", () => {
     });
   });
 
-  it("surfaces invoke errors", async () => {
+  it("surfaces invoke errors in a destructive alert", async () => {
     vi.mocked(TauriApi.invoke).mockRejectedValueOnce(new Error("bridge down"));
     render(
       <MemoryRouter>
@@ -129,7 +129,11 @@ describe("SettingsPage", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText(/bridge down/i)).toBeTruthy();
+      const errorText = screen.getByText(/bridge down/i);
+      const alert = errorText.closest("[data-slot='alert']");
+      expect(alert).toBeTruthy();
+      expect(alert).toHaveAttribute("role", "alert");
+      expect(alert?.className).toMatch(/text-destructive/);
     });
   });
 });

@@ -1,8 +1,8 @@
 {
   "name": "maguna",
-  "description": "Tauri desktop app (Helvety Maguna) for GGUF models — catalog, download, native file-picker import, app-data model storage, on-device inference (Chat, correction/translate, custom modes), per-mode prompts and model bindings, always-on output guardrails (optional custom policy text), Settings (terms, acceptable use, disclaimers), archives in localStorage, light/dark theme, copy controls",
+  "description": "Tauri desktop app (Helvety Maguna) for GGUF models — shadcn base-nova UI on Base UI, catalog, download, native file-picker import, app-data model storage, on-device inference (Chat, correction/translate, custom modes), per-mode prompts and model bindings, always-on output guardrails (optional custom policy text), Settings (terms, acceptable use, disclaimers), archives in localStorage, light/dark theme, copy controls",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "packageManager": "bun@1.3.14",
   "engines": {

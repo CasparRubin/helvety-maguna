@@ -703,7 +703,7 @@ export function ModePage() {
   return (
     <div
       ref={modePageLayoutRef}
-      className={cn("mx-auto flex flex-col gap-6", isChat ? "max-w-4xl" : "max-w-3xl")}
+      className={cn("mx-auto flex max-w-4xl flex-col gap-6")}
     >
       <header className="flex items-start justify-between gap-4">
         <h2 className="text-2xl font-semibold tracking-tight">{draft.name}</h2>
@@ -1201,9 +1201,10 @@ export function ModePage() {
                   <ul className="divide-y p-2">
                     {chatSessions.map((row) => (
                       <li key={row.id} className="flex gap-2 py-3 first:pt-2 last:pb-2">
-                        <button
+                        <Button
                           type="button"
-                          className="min-w-0 flex-1 rounded-md px-2 py-1 text-left transition-colors hover:bg-muted/60"
+                          variant="ghost"
+                          className="h-auto min-w-0 flex-1 justify-start rounded-lg px-2 py-1 text-left font-normal"
                           onClick={() => openStoredSession(row)}
                         >
                           <p className="text-xs font-medium text-foreground line-clamp-2">
@@ -1215,7 +1216,7 @@ export function ModePage() {
                               <span className="ml-2 text-primary">• open</span>
                             ) : null}
                           </p>
-                        </button>
+                        </Button>
                         <Button
                           type="button"
                           variant="ghost"
@@ -1328,7 +1329,7 @@ export function ModePage() {
             </div>
             {busy && cancelling ? (
               <p className="text-xs text-muted-foreground">
-                Cancel requested. Stopping generation and cleaning up...
+                Cancel requested. Stopping generation and cleaning up…
               </p>
             ) : null}
             {busy && inferPhase === "prefill" ? (

@@ -1,5 +1,3 @@
-"use client";
-
 import { Progress as ProgressPrimitive } from "@base-ui/react/progress";
 
 import { cn } from "@/lib/utils";
@@ -10,11 +8,14 @@ function Progress({
   value,
   ...props
 }: ProgressPrimitive.Root.Props) {
+  const indeterminate = value == null;
+
   return (
     <ProgressPrimitive.Root
       value={value}
       data-slot="progress"
-      className={cn("flex flex-wrap gap-3", className)}
+      data-indeterminate={indeterminate || undefined}
+      className={cn("group/progress flex w-full flex-wrap gap-3", className)}
       {...props}
     >
       {children}
@@ -42,7 +43,10 @@ function ProgressIndicator({ className, ...props }: ProgressPrimitive.Indicator.
   return (
     <ProgressPrimitive.Indicator
       data-slot="progress-indicator"
-      className={cn("h-full bg-primary transition-all", className)}
+      className={cn(
+        "h-full bg-primary transition-all group-data-[indeterminate]/progress:w-full group-data-[indeterminate]/progress:animate-pulse group-data-[indeterminate]/progress:bg-primary/50",
+        className,
+      )}
       {...props}
     />
   );
