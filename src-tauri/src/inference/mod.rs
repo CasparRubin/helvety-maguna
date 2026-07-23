@@ -4,6 +4,16 @@
 
 #[cfg(feature = "llama")]
 mod llama_impl;
+#[cfg(feature = "llama")]
+mod mtp_accel;
+#[cfg(feature = "llama")]
+mod multimodal;
+#[cfg(feature = "llama")]
+mod sampler;
 
 #[cfg(feature = "llama")]
-pub use llama_impl::stream_chat_completion;
+pub use llama_impl::{stream_chat_completion, ChatKvSession};
+#[cfg(feature = "llama")]
+pub use multimodal::stream_completion_with_image;
+#[cfg(feature = "llama")]
+pub use sampler::SamplerProfile;

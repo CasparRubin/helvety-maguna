@@ -54,6 +54,10 @@ vi.mock("@/lib/tauri-api", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: vi.fn().mockResolvedValue(null),
+}));
+
 const readText = vi.fn();
 const writeText = vi.fn();
 
@@ -119,7 +123,9 @@ describe("ModePage", () => {
           override_model_id: null,
         };
       }
-      if (cmd === "run_mode_chat" || cmd === "run_mode") return undefined;
+      if (cmd === "run_mode_chat" || cmd === "run_mode" || cmd === "reset_chat_kv") {
+        return undefined;
+      }
       throw new Error(`unhandled invoke in test: ${cmd}`);
     });
   });
@@ -165,6 +171,7 @@ describe("ModePage", () => {
         expect.objectContaining({
           modeId,
           messages: [{ role: "user", content: "from-clipboard" }],
+          imagePath: null,
         }),
       );
     });
@@ -202,6 +209,7 @@ describe("ModePage", () => {
         return { effective_model_id: "model-1", override_model_id: null };
       }
       if (cmd === "run_mode_chat") return new Promise(() => {});
+      if (cmd === "reset_chat_kv") return undefined;
       throw new Error(`unhandled invoke in test: ${cmd}`);
     });
 
@@ -261,6 +269,7 @@ describe("ModePage", () => {
         expect.objectContaining({
           modeId,
           messages: [{ role: "user", content: "hello model" }],
+          imagePath: null,
         }),
       );
     });
@@ -290,8 +299,14 @@ describe("ModePage", () => {
     expect(await screen.findByPlaceholderText(/write a message/i)).toBeInTheDocument();
     expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /new chat/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /attach image/i })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /^message$/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^archive$/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith("reset_chat_kv");
+    });
   });
 
   it("Paste and run on input/output fills input and invokes run_mode", async () => {
@@ -321,6 +336,8 @@ describe("ModePage", () => {
           locale: null,
           fromLang: null,
           toLang: null,
+          terminology: null,
+          keepFormatting: null,
         }),
       );
     });
@@ -465,6 +482,64 @@ describe("ModePage", () => {
           input: "from-clipboard",
           fromLang: "de",
           toLang: "en",
+          terminology: [],
+          keepFormatting: false,
+        }),
+      );
+    });
+  });
+
+  it("translate DE→EN shows terminology controls and sends glossary on run", async () => {
+    const modeId = "vitest-translate-terminology";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Translate DE EN",
+        system_prompt: "",
+        prompt_layout: "translate",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    renderAtMode(`/mode/${modeId}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: /edit configuration/i }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByLabelText(/^language in$/i));
+    await clickSelectOption("German");
+    fireEvent.click(within(dialog).getByLabelText(/^language out$/i));
+    await clickSelectOption("English");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^close$/i }));
+
+    expect(await screen.findByText(/terminology \(optional\)/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /add term/i }));
+    const sourceInput = screen
+      .getByText(/^source$/i)
+      .parentElement!.querySelector("input");
+    const targetInput = screen
+      .getByText(/^target$/i)
+      .parentElement!.querySelector("input");
+    expect(sourceInput).toBeTruthy();
+    expect(targetInput).toBeTruthy();
+    fireEvent.change(sourceInput!, { target: { value: "Rechnung" } });
+    fireEvent.change(targetInput!, { target: { value: "invoice" } });
+    fireEvent.click(screen.getByText(/keep formatting \/ structure/i));
+
+    const input = screen.getByRole("textbox", { name: /input/i });
+    fireEvent.change(input, { target: { value: "Die Rechnung bitte." } });
+    fireEvent.click(screen.getByRole("button", { name: /^run$/i }));
+
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith(
+        "run_mode",
+        expect.objectContaining({
+          modeId,
+          input: "Die Rechnung bitte.",
+          fromLang: "de",
+          toLang: "en",
+          terminology: [["Rechnung", "invoice"]],
+          keepFormatting: true,
         }),
       );
     });
@@ -507,7 +582,9 @@ describe("ModePage", () => {
         };
       }
       if (cmd === "set_mode_model_override") return undefined;
-      if (cmd === "run_mode" || cmd === "run_mode_chat") return undefined;
+      if (cmd === "run_mode" || cmd === "run_mode_chat" || cmd === "reset_chat_kv") {
+        return undefined;
+      }
       throw new Error(`unhandled invoke in test: ${cmd}`);
     });
 
@@ -564,6 +641,7 @@ describe("ModePage", () => {
       expect(screen.getByText(/• open/i)).toBeInTheDocument();
     });
     expect(screen.queryByText(/no messages yet/i)).not.toBeInTheDocument();
+    expect(tauriApi.invoke).toHaveBeenCalledWith("reset_chat_kv");
   });
 
   it("closes Edit configuration dialog via the dialog close control", async () => {

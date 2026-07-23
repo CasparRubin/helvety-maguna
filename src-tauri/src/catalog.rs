@@ -31,6 +31,21 @@ pub struct CatalogModel {
     /// Public release of this checkpoint family (`YYYY-MM-DD`), from upstream cards; optional.
     #[serde(default)]
     pub release_date: Option<String>,
+    /// Optional vision projector GGUF (mmproj) for Chat image attach via mtmd.
+    #[serde(default)]
+    pub mmproj_url: Option<String>,
+    #[serde(default)]
+    pub mmproj_sha256: Option<String>,
+    #[serde(default)]
+    pub mmproj_size_bytes: Option<u64>,
+    /// Optional MTP draft GGUF URL. Downloaded/stored when present; Maguna's decode
+    /// loop uses in-model MTP heads today, not this sidecar.
+    #[serde(default)]
+    pub mtp_draft_url: Option<String>,
+    #[serde(default)]
+    pub mtp_draft_sha256: Option<String>,
+    #[serde(default)]
+    pub mtp_draft_size_bytes: Option<u64>,
 }
 
 fn default_chat_template() -> String {
@@ -68,8 +83,10 @@ mod tests {
 
     const LEGACY_V7_IDS: &[&str] = &["qwen3-14b-q4km"];
 
+    const LEGACY_V8_IDS: &[&str] = &["deepseek-r1-distill-qwen-7b-q4km", "hunyuan-mt-7b-q4km"];
+
     /// Keep in sync with `src/lib/catalog-expectations.ts`.
-    const EXPECTED_V8_MODELS: &[(&str, &str, u64)] = &[
+    const EXPECTED_V9_MODELS: &[(&str, &str, u64)] = &[
         (
             "ministral-3-3b-instruct-q4km",
             "mistral3_instruct",
@@ -77,12 +94,12 @@ mod tests {
         ),
         ("phi-4-mini-instruct-q4km", "phi4_instruct", 2_491_874_688),
         ("qwen3.5-4b-q4km", "qwen2_instruct", 3_013_027_808),
+        ("hy-mt15-7b-q4km", "hunyuan_dense", 4_624_649_312),
         (
-            "deepseek-r1-distill-qwen-7b-q4km",
+            "deepseek-r1-0528-qwen3-8b-q4km",
             "qwen2_instruct_reasoning",
-            4_683_073_504,
+            5_027_783_040,
         ),
-        ("hunyuan-mt-7b-q4km", "hunyuan_dense", 4_702_111_200),
         (
             "ministral-3-8b-instruct-q4km",
             "mistral3_instruct",
@@ -90,7 +107,7 @@ mod tests {
         ),
         ("glm-4-9b-0414-q4km", "glm4_instruct", 6_166_574_464),
         ("qwen3.5-9b-q4km", "qwen2_instruct", 6_169_341_984),
-        ("gemma-4-12b-it-q4km", "gemma4_it", 7_381_382_048),
+        ("gemma-4-12b-it-q4km", "gemma4_it", 7_121_861_440),
         (
             "ministral-3-14b-instruct-q4km",
             "mistral3_instruct",
@@ -102,9 +119,9 @@ mod tests {
     ];
 
     #[test]
-    fn bundled_catalog_is_version_8_with_thirteen_models() {
+    fn bundled_catalog_is_version_9_with_thirteen_models() {
         let cat = load_catalog().expect("embedded catalog.json");
-        assert_eq!(cat.version, 8);
+        assert_eq!(cat.version, 9);
         assert_eq!(cat.models.len(), 13);
     }
 
@@ -157,8 +174,24 @@ mod tests {
     }
 
     #[test]
-    fn catalog_v8_ids_and_templates() {
-        for &(id, template, size_bytes) in EXPECTED_V8_MODELS {
+    fn catalog_dropped_legacy_v8_ids() {
+        let ids: Vec<String> = load_catalog()
+            .expect("catalog")
+            .models
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
+        for legacy in LEGACY_V8_IDS {
+            assert!(
+                !ids.iter().any(|id| id == legacy),
+                "legacy id still in catalog: {legacy}"
+            );
+        }
+    }
+
+    #[test]
+    fn catalog_v9_ids_and_templates() {
+        for &(id, template, size_bytes) in EXPECTED_V9_MODELS {
             let model = find_catalog_model(id).unwrap_or_else(|_| panic!("{id}"));
             assert_eq!(model.chat_template, template, "{id}");
             assert_eq!(model.size_bytes, size_bytes, "{id}");
@@ -167,7 +200,20 @@ mod tests {
             assert!(!model.url.trim().is_empty(), "{id} url");
             assert!(!model.hf_repo.trim().is_empty(), "{id} hf_repo");
             assert!(!model.languages.is_empty(), "{id} languages");
+            assert!(
+                model.sha256.as_ref().is_some_and(|s| s.len() == 64),
+                "{id} sha256"
+            );
         }
+    }
+
+    #[test]
+    fn gemma_4_12b_ships_mmproj_and_mtp_sidecars() {
+        let m = find_catalog_model("gemma-4-12b-it-q4km").expect("gemma");
+        assert!(m.mmproj_url.as_ref().is_some_and(|u| u.contains("mmproj")));
+        assert_eq!(m.mmproj_size_bytes, Some(175_115_840));
+        assert!(m.mtp_draft_url.as_ref().is_some_and(|u| u.contains("mtp")));
+        assert_eq!(m.mtp_draft_size_bytes, Some(465_109_248));
     }
 
     #[test]
@@ -175,7 +221,7 @@ mod tests {
         let mut models = load_catalog().expect("catalog").models;
         models.sort_by_key(|m| m.size_bytes);
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
-        let expected: Vec<&str> = EXPECTED_V8_MODELS.iter().map(|(id, _, _)| *id).collect();
+        let expected: Vec<&str> = EXPECTED_V9_MODELS.iter().map(|(id, _, _)| *id).collect();
         assert_eq!(ids, expected);
     }
 }

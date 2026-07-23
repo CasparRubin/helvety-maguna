@@ -77,6 +77,7 @@ pub fn run() {
             commands::reset_mode_to_default,
             commands::run_mode,
             commands::run_mode_chat,
+            commands::reset_chat_kv,
             commands::get_guardrails_settings,
             commands::set_guardrails_settings,
         ])

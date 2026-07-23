@@ -74,6 +74,9 @@ pub struct AppState {
     pub llama_backend: Arc<llama_cpp_4::llama_backend::LlamaBackend>,
     #[cfg(feature = "llama")]
     pub loaded: Mutex<Option<(String, ChatTemplate, Arc<llama_cpp_4::model::LlamaModel>)>>,
+    /// Multi-turn Chat KV reuse; invalidated on model unload, New chat, or cancel.
+    #[cfg(feature = "llama")]
+    pub chat_kv: Arc<Mutex<Option<crate::inference::ChatKvSession>>>,
 }
 
 impl AppState {
@@ -91,6 +94,8 @@ impl AppState {
             llama_backend,
             #[cfg(feature = "llama")]
             loaded: Mutex::new(None),
+            #[cfg(feature = "llama")]
+            chat_kv: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -184,7 +189,13 @@ impl AppState {
     }
 
     #[cfg(feature = "llama")]
+    pub fn invalidate_chat_kv(&self) {
+        *self.chat_kv.lock() = None;
+    }
+
+    #[cfg(feature = "llama")]
     pub fn unload_model(&self) {
+        self.invalidate_chat_kv();
         *self.loaded.lock() = None;
     }
 

@@ -158,6 +158,11 @@ describe("ModelsPage", () => {
       expect(screen.getByText("Ministral 3 8B")).toBeInTheDocument();
     });
 
+    const catalogBlurb = screen.getByText(/Smallest downloads first/i);
+    expect(catalogBlurb.textContent).toMatch(/writing and chat/i);
+    expect(catalogBlurb.textContent).toMatch(/HY-MT1\.5 7B/);
+    expect(catalogBlurb.textContent).toMatch(/Translate/i);
+
     const gemmaCard = screen.getByText("Recommended").closest(".rounded-xl");
     const ministralCard = screen.getByText("Ministral 3 8B").closest(".rounded-xl");
     expect(gemmaCard).toBeTruthy();
@@ -235,6 +240,7 @@ describe("ModelsPage", () => {
           payload: {
             model_id: string;
             phase?: "downloading" | "installing";
+            sidecar?: string;
             received: number;
             total: number | null;
           };
@@ -330,6 +336,27 @@ describe("ModelsPage", () => {
       ).toBeInTheDocument();
       expect(
         within(downloadProgressCard()).getByText(/Downloading… 50%/i),
+      ).toBeInTheDocument();
+    });
+
+    act(() => {
+      progressHandler!({
+        payload: {
+          model_id: RECOMMENDED_CATALOG_MODEL_ID,
+          phase: "downloading",
+          sidecar: "mmproj",
+          received: 50_000_000,
+          total: 175_115_840,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Downloading vision projector…/i }),
+      ).toBeInTheDocument();
+      expect(
+        within(downloadProgressCard()).getByText(/Downloading vision projector…/i),
       ).toBeInTheDocument();
     });
 

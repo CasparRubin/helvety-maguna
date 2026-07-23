@@ -218,12 +218,28 @@ pub fn reset_builtin(app: &tauri::AppHandle, mode_id: &str) -> MagunaResult<()> 
 }
 
 /// Fixed user-turn layout: input language → input → output language (when applicable).
+/// Thin wrapper used by tests and callers that do not need terminology options.
+#[allow(dead_code)]
 pub fn format_user_turn(
     layout: PromptLayout,
     input: &str,
     locale: Option<&str>,
     from: Option<&str>,
     to: Option<&str>,
+) -> String {
+    format_user_turn_with_options(layout, input, locale, from, to, &[], false)
+}
+
+/// Like [`format_user_turn`], with optional Hy-MT-style terminology pairs and
+/// format-preservation guidance for Translate layouts.
+pub fn format_user_turn_with_options(
+    layout: PromptLayout,
+    input: &str,
+    locale: Option<&str>,
+    from: Option<&str>,
+    to: Option<&str>,
+    terminology: &[(String, String)],
+    keep_formatting: bool,
 ) -> String {
     match layout {
         PromptLayout::Plain => {
@@ -237,7 +253,28 @@ pub fn format_user_turn(
         PromptLayout::Translate => {
             let f = from.unwrap_or("?");
             let t = to.unwrap_or("?");
-            format!("Input language: {f}\n\nInput:\n\n{input}\n\nOutput language: {t}")
+            let mut out = String::new();
+            if !terminology.is_empty() {
+                out.push_str("Reference the following translations:\n");
+                for (src, tgt) in terminology {
+                    let src = src.trim();
+                    let tgt = tgt.trim();
+                    if src.is_empty() || tgt.is_empty() {
+                        continue;
+                    }
+                    out.push_str(&format!("\"{src}\" translates to \"{tgt}\"\n"));
+                }
+                out.push('\n');
+            }
+            if keep_formatting {
+                out.push_str(
+                    "Preserve the exact structure, delimiters, and formatting of the source; translate only user-facing text.\n\n",
+                );
+            }
+            out.push_str(&format!(
+                "Input language: {f}\n\nInput:\n\n{input}\n\nOutput language: {t}"
+            ));
+            out
         }
         // Unused by `run_mode_chat`; passthrough keeps the helper total if ever called by mistake.
         PromptLayout::Chat => input.to_string(),
@@ -377,5 +414,28 @@ mod tests {
         assert!(out.contains("Input language: de"));
         assert!(out.contains("fix me"));
         assert!(out.contains("Output language: de"));
+    }
+
+    #[test]
+    fn format_translate_with_terminology_and_keep_formatting() {
+        let terms = vec![
+            ("Rechnung".into(), "invoice".into()),
+            ("  ".into(), "ignored".into()),
+        ];
+        let out = format_user_turn_with_options(
+            PromptLayout::Translate,
+            "Die Rechnung bitte.",
+            None,
+            Some("de"),
+            Some("en"),
+            &terms,
+            true,
+        );
+        assert!(out.contains("Reference the following translations:"));
+        assert!(out.contains("\"Rechnung\" translates to \"invoice\""));
+        assert!(!out.contains("ignored"));
+        assert!(out.contains("Preserve the exact structure"));
+        assert!(out.contains("Die Rechnung bitte."));
+        assert!(out.contains("Output language: en"));
     }
 }

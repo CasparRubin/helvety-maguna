@@ -20,12 +20,16 @@ describe("compactModelDisplayName", () => {
       "Qwen 2.5 14B",
     );
     expect(compactModelDisplayName("Gemma 2 9B IT (Q4_K_M)")).toBe("Gemma 2 9B");
-  });
-
-  it("preserves non-verbose names", () => {
-    expect(compactModelDisplayName("DeepSeek R1 Distill Qwen 7B")).toBe(
+    expect(compactModelDisplayName("DeepSeek R1 Distill Qwen 7B (Q4_K_M)")).toBe(
       "DeepSeek R1 Distill Qwen 7B",
     );
+  });
+
+  it("preserves non-verbose names including current catalog labels", () => {
+    expect(compactModelDisplayName("DeepSeek R1-0528 Qwen3 8B")).toBe(
+      "DeepSeek R1-0528 Qwen3 8B",
+    );
+    expect(compactModelDisplayName("HY-MT1.5 7B")).toBe("HY-MT1.5 7B");
     expect(compactModelDisplayName("Custom Team Model")).toBe("Custom Team Model");
   });
 

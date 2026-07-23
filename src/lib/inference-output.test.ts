@@ -135,7 +135,9 @@ describe("visibleInferenceOutput", () => {
 });
 
 describe("modelPreservesReasoningTrace", () => {
-  it("returns true for DeepSeek R1 distill catalog ids", () => {
+  it("returns true for current and legacy DeepSeek R1 catalog ids", () => {
+    expect(modelPreservesReasoningTrace("deepseek-r1-0528-qwen3-8b-q4km")).toBe(true);
+    // Retired from catalog v9 but still recognized for already-installed GGUFs.
     expect(modelPreservesReasoningTrace("deepseek-r1-distill-qwen-7b-q4km")).toBe(true);
   });
 
@@ -149,6 +151,7 @@ describe("modelPreservesReasoningTrace", () => {
     expect(modelPreservesReasoningTrace("gemma-4-12b-it-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace("glm-4-9b-0414-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace("glm-4.7-flash-q4km")).toBe(false);
+    expect(modelPreservesReasoningTrace("hy-mt15-7b-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace(null)).toBe(false);
   });
 });

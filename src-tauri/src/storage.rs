@@ -19,6 +19,12 @@ pub struct InstalledManifest {
     /// Empty = infer from model id / hint.
     #[serde(default)]
     pub chat_template: String,
+    /// Optional vision projector (mmproj) beside the main GGUF.
+    #[serde(default)]
+    pub mmproj_path: Option<PathBuf>,
+    /// Optional MTP draft GGUF path (stored from catalog; unused by decode today).
+    #[serde(default)]
+    pub mtp_draft_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -157,9 +163,70 @@ pub fn install_from_catalog(
         sha256: catalog.sha256.clone(),
         source_url: Some(catalog.url.clone()),
         chat_template: catalog.chat_template.clone(),
+        mmproj_path: None,
+        mtp_draft_path: None,
     };
     write_manifest(&dir, &manifest)?;
     Ok(())
+}
+
+/// Install optional mmproj / MTP draft files into an already-installed catalog model dir.
+pub fn install_sidecars(
+    app: &tauri::AppHandle,
+    catalog_id: &str,
+    mmproj: Option<PathBuf>,
+    mtp_draft: Option<PathBuf>,
+) -> MagunaResult<()> {
+    let dir = paths::models_dir(app)?.join(catalog_id);
+    let mut manifest = read_manifest(&dir)?;
+    if let Some(src) = mmproj {
+        let dest = dir.join("mmproj.gguf");
+        if dest.exists() {
+            let _ = fs::remove_file(&dest);
+        }
+        if fs::rename(&src, &dest).is_err() {
+            fs::copy(&src, &dest)?;
+            remove_download_staging_file(&src)?;
+        }
+        manifest.mmproj_path = Some(dest);
+    }
+    if let Some(src) = mtp_draft {
+        let dest = dir.join("mtp-draft.gguf");
+        if dest.exists() {
+            let _ = fs::remove_file(&dest);
+        }
+        if fs::rename(&src, &dest).is_err() {
+            fs::copy(&src, &dest)?;
+            remove_download_staging_file(&src)?;
+        }
+        manifest.mtp_draft_path = Some(dest);
+    }
+    write_manifest(&dir, &manifest)?;
+    Ok(())
+}
+
+#[cfg_attr(not(feature = "llama"), allow(dead_code))]
+pub fn effective_mmproj_path(model_dir: &Path, m: &InstalledManifest) -> Option<PathBuf> {
+    m.mmproj_path
+        .as_ref()
+        .filter(|p| p.is_file())
+        .cloned()
+        .or_else(|| {
+            let p = model_dir.join("mmproj.gguf");
+            p.is_file().then_some(p)
+        })
+}
+
+#[cfg_attr(not(feature = "llama"), allow(dead_code))]
+pub fn effective_mtp_draft_path(model_dir: &Path, m: &InstalledManifest) -> Option<PathBuf> {
+    m.mtp_draft_path
+        .as_ref()
+        .filter(|p| p.is_file())
+        .cloned()
+        .or_else(|| {
+            let p = model_dir.join("mtp-draft.gguf");
+            p.is_file().then_some(p)
+        })
 }
 
 fn validate_model_id(model_id: &str) -> MagunaResult<()> {
@@ -269,6 +336,28 @@ pub fn resolve_gguf_path(app: &tauri::AppHandle, model_id: &str) -> MagunaResult
     effective_gguf_path(&dir, &m)
 }
 
+/// Optional vision projector next to an installed catalog GGUF (Gemma 4 12B, …).
+#[cfg(feature = "llama")]
+pub fn resolve_mmproj_path(
+    app: &tauri::AppHandle,
+    model_id: &str,
+) -> MagunaResult<Option<PathBuf>> {
+    let dir = paths::models_dir(app)?.join(model_id);
+    let m = read_manifest(&dir)?;
+    Ok(effective_mmproj_path(&dir, &m))
+}
+
+/// Optional MTP draft weights when the catalog shipped a sidecar (stored on disk;
+/// Maguna's decode loop does not load this file today).
+pub fn resolve_mtp_draft_path(
+    app: &tauri::AppHandle,
+    model_id: &str,
+) -> MagunaResult<Option<PathBuf>> {
+    let dir = paths::models_dir(app)?.join(model_id);
+    let m = read_manifest(&dir)?;
+    Ok(effective_mtp_draft_path(&dir, &m))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -296,6 +385,8 @@ mod tests {
             sha256: None,
             source_url: None,
             chat_template: String::new(),
+            mmproj_path: None,
+            mtp_draft_path: None,
         }
     }
 

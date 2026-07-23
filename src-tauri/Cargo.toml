@@ -10,6 +10,8 @@ edition = "2021"
 # download, and import still run; inference (`run_mode` / `run_mode_chat`) is unavailable.
 default = ["llama"]
 llama = ["dep:llama-cpp-4"]
+# Windows/Linux GPU: build with `--features llama-vulkan` when the Vulkan SDK is installed.
+llama-vulkan = ["llama", "llama-cpp-4/vulkan"]
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -35,11 +37,11 @@ hex = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # `metal`: on macOS ggml links Apple Metal GPU acceleration (much faster prompt + decode than CPU-only).
-# On other targets the `metal` feature is ignored at build time; weights still run CPU-only until you use
-# Vulkan/CUDA-capable backends via `llama-cpp-4` feature flags.
+# On other targets the `metal` feature is ignored at build time; weights still run CPU-only unless you
+# enable Maguna's `llama-vulkan` feature on Windows/Linux builds that have a Vulkan SDK.
 # `default-features = false` avoids `dynamic-link` (ggml `.dylib`s + broken `@rpath` in the .app).
 # `openmp` is omitted on macOS so release builds do not depend on Homebrew `libomp.dylib`.
-llama-cpp-4 = { version = "0.3", default-features = false, features = ["metal", "mtmd"], optional = true }
+llama-cpp-4 = { version = "0.4.2", default-features = false, features = ["metal", "mtmd"], optional = true }
 parking_lot = "0.12"
 tauri-plugin-dialog = "2"
 

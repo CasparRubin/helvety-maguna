@@ -45,9 +45,17 @@ type DownloadPhase = "downloading" | "installing";
 type DownloadProgress = {
   modelId: string;
   phase: DownloadPhase;
+  /** When set, this download event is an optional catalog sidecar (mmproj / mtp). */
+  sidecar: string | null;
   received: number;
   total: number | null;
 };
+
+function sidecarDownloadLabel(sidecar: string | null): string | null {
+  if (sidecar === "mmproj") return "vision projector";
+  if (sidecar === "mtp") return "MTP draft sidecar";
+  return null;
+}
 
 function catalogDownloadButtonLabel(
   entryId: string,
@@ -59,6 +67,13 @@ function catalogDownloadButtonLabel(
   }
   if (progress.phase === "installing") {
     return "Finishing install…";
+  }
+  const sidecarLabel = sidecarDownloadLabel(progress.sidecar);
+  if (sidecarLabel) {
+    if (pct !== undefined) {
+      return `Downloading ${sidecarLabel}… ${pct}%`;
+    }
+    return `Downloading ${sidecarLabel}…`;
   }
   if (pct !== undefined) {
     return `Downloading… ${pct}%`;
@@ -114,6 +129,7 @@ export function ModelsPage() {
     void listen<{
       model_id: string;
       phase?: DownloadPhase;
+      sidecar?: string;
       received: number;
       total: number | null;
     }>("download-progress", (ev) => {
@@ -122,6 +138,10 @@ export function ModelsPage() {
       setDownloadProgress({
         modelId: ev.payload.model_id,
         phase,
+        sidecar:
+          typeof ev.payload.sidecar === "string" && ev.payload.sidecar.length > 0
+            ? ev.payload.sidecar
+            : null,
         received: ev.payload.received,
         total: ev.payload.total,
       });
@@ -244,10 +264,13 @@ export function ModelsPage() {
           every mode to use it unless you choose otherwise on that mode&apos;s page.
           Installed weights live in per-user app data and survive app updates. While a
           catalog download runs, that card&apos;s <strong>Download</strong> button shows{" "}
-          <strong>Downloading…</strong> (with a percentage when known), then{" "}
-          <strong>Finishing install…</strong>; the progress card on this page also
-          tracks the stream and the rename-or-copy step into managed storage (large
-          models can take minutes, especially across volumes).
+          <strong>Downloading…</strong> (with a percentage when known), then any
+          optional <strong>vision projector</strong> / <strong>MTP draft</strong>{" "}
+          sidecars, then <strong>Finishing install…</strong>; the progress card on this
+          page also tracks the stream and the rename-or-copy step into managed storage
+          (large models can take minutes, especially across volumes). Card size badges
+          show the main GGUF only—sidecars add extra download when the catalog lists
+          them.
         </p>
       </header>
 
@@ -271,10 +294,16 @@ export function ModelsPage() {
                   <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden />
                   Finishing install…
                 </>
-              ) : pct !== undefined ? (
-                `Downloading… ${pct}%`
               ) : (
-                "Downloading…"
+                (() => {
+                  const sidecarLabel = sidecarDownloadLabel(downloadProgress.sidecar);
+                  if (sidecarLabel) {
+                    return pct !== undefined
+                      ? `Downloading ${sidecarLabel}… ${pct}%`
+                      : `Downloading ${sidecarLabel}…`;
+                  }
+                  return pct !== undefined ? `Downloading… ${pct}%` : "Downloading…";
+                })()
               )}
             </CardTitle>
             <CardDescription>
@@ -292,7 +321,11 @@ export function ModelsPage() {
                 </>
               ) : (
                 <>
-                  {downloadProgress.modelId} —{" "}
+                  {downloadProgress.modelId}
+                  {sidecarDownloadLabel(downloadProgress.sidecar)
+                    ? ` (${sidecarDownloadLabel(downloadProgress.sidecar)})`
+                    : ""}{" "}
+                  —{" "}
                   {downloadProgress.total != null
                     ? `${(downloadProgress.received / 1_000_000).toFixed(1)} / ${(downloadProgress.total / 1_000_000).toFixed(1)} MB`
                     : `${(downloadProgress.received / 1_000_000).toFixed(1)} MB`}
@@ -474,9 +507,11 @@ export function ModelsPage() {
           Catalog
         </h3>
         <p className="mb-4 text-sm text-muted-foreground">
-          Smallest downloads first. Approximate size is on each card;{" "}
+          Smallest downloads first. Approximate <strong>main GGUF</strong> size is on
+          each card (optional vision/MTP sidecars are extra when listed).{" "}
           <strong>Gemma 4 12B</strong> is highlighted as the recommended starting pick
-          for most writing and translation use.
+          for most writing and chat; prefer <strong>HY-MT1.5 7B</strong> for Translate
+          DE↔EN.
         </p>
         <div className="grid gap-4 md:grid-cols-2">
           {catalogSorted.map((entry) => {
@@ -514,7 +549,7 @@ export function ModelsPage() {
                     <Badge
                       variant="secondary"
                       className="shrink-0 tabular-nums"
-                      title="Approximate download size"
+                      title="Approximate main GGUF download size (optional catalog sidecars are extra)"
                     >
                       {formatApproxDownloadGb(entry.size_bytes)}
                     </Badge>
@@ -537,6 +572,7 @@ export function ModelsPage() {
                       setDownloadProgress({
                         modelId: entry.id,
                         phase: "downloading",
+                        sidecar: null,
                         received: 0,
                         total: entry.size_bytes,
                       });

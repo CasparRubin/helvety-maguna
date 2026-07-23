@@ -339,6 +339,83 @@ pub async fn download_model(
         let _ = std::fs::remove_file(&staging_partial_path);
         return Err(e.to_string());
     }
+
+    // Optional vision projector + MTP draft (e.g. Gemma 4 12B).
+    let mut mmproj_partial = None;
+    let mut mtp_partial = None;
+    if let Some(url) = entry.mmproj_url.as_deref() {
+        let app_c = app.clone();
+        let id = entry.id.clone();
+        let staging = format!("{}.mmproj.partial", entry.id);
+        match download::download_url_to_tmp(
+            &app,
+            url,
+            &staging,
+            entry.mmproj_sha256.as_deref(),
+            move |received, total| {
+                let _ = app_c.emit(
+                    "download-progress",
+                    serde_json::json!({
+                        "model_id": id,
+                        "phase": "downloading",
+                        "sidecar": "mmproj",
+                        "received": received,
+                        "total": total,
+                    }),
+                );
+            },
+        )
+        .await
+        {
+            Ok(p) => mmproj_partial = Some(p),
+            Err(e) => tracing::warn!("mmproj download skipped: {e}"),
+        }
+    }
+    if let Some(url) = entry.mtp_draft_url.as_deref() {
+        let app_c = app.clone();
+        let id = entry.id.clone();
+        let staging = format!("{}.mtp.partial", entry.id);
+        match download::download_url_to_tmp(
+            &app,
+            url,
+            &staging,
+            entry.mtp_draft_sha256.as_deref(),
+            move |received, total| {
+                let _ = app_c.emit(
+                    "download-progress",
+                    serde_json::json!({
+                        "model_id": id,
+                        "phase": "downloading",
+                        "sidecar": "mtp",
+                        "received": received,
+                        "total": total,
+                    }),
+                );
+            },
+        )
+        .await
+        {
+            Ok(p) => mtp_partial = Some(p),
+            Err(e) => tracing::warn!("mtp draft download skipped: {e}"),
+        }
+    }
+    if mmproj_partial.is_some() || mtp_partial.is_some() {
+        let _ = app.emit(
+            "download-progress",
+            serde_json::json!({
+                "model_id": &entry.id,
+                "phase": "installing",
+                "received": entry.size_bytes,
+                "total": entry.size_bytes,
+            }),
+        );
+        if let Err(e) = storage::install_sidecars(&app, &entry.id, mmproj_partial, mtp_partial) {
+            tracing::warn!("sidecar install: {e}");
+        } else if let Ok(Some(p)) = storage::resolve_mtp_draft_path(&app, &entry.id) {
+            tracing::info!("MTP draft sidecar installed: {}", p.display());
+        }
+    }
+
     sync_default_model_from_installs(&app, &state, Some(entry.id.as_str()))?;
     Ok(())
 }
@@ -381,6 +458,8 @@ pub async fn import_gguf(
         sha256: None,
         source_url: None,
         chat_template,
+        mmproj_path: None,
+        mtp_draft_path: None,
     };
     storage::write_manifest(&dir, &manifest).map_err(|e| e.to_string())?;
     sync_default_model_from_installs(&app, &state, Some(id.as_str()))?;
@@ -487,6 +566,7 @@ fn inferred_generation_cap_from_user_turn(user_turn: &str) -> usize {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Flat invoke args from the frontend; keep in sync with ModePage.
 pub async fn run_mode(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -495,6 +575,9 @@ pub async fn run_mode(
     locale: Option<String>,
     from_lang: Option<String>,
     to_lang: Option<String>,
+    // Optional glossary rows `[source, target]` for Hy-MT-style terminology (Translate modes).
+    terminology: Option<Vec<[String; 2]>>,
+    keep_formatting: Option<bool>,
 ) -> Result<(), String> {
     let list = modes::load_modes(&app).map_err(|e| e.to_string())?;
     let mode = list
@@ -547,17 +630,47 @@ pub async fn run_mode(
         }
     }
 
-    let user = modes::format_user_turn(
+    let terms: Vec<(String, String)> = terminology
+        .unwrap_or_default()
+        .into_iter()
+        .map(|pair| (pair[0].clone(), pair[1].clone()))
+        .collect();
+    let keep_fmt = keep_formatting.unwrap_or(false);
+    let user = modes::format_user_turn_with_options(
         mode.prompt_layout,
         &input,
         locale.as_deref(),
         from_lang.as_deref(),
         to_lang.as_deref(),
+        &terms,
+        keep_fmt,
     );
     let max_tokens = inferred_generation_cap_from_user_turn(&user);
     let effective_system =
         guardrails::compose_effective_system(&mode.system_prompt, &state.persisted_snapshot());
-    run_task_inner(&app, &state, effective_system.as_str(), &user, max_tokens).await
+    #[cfg(feature = "llama")]
+    {
+        let sampler = inference::SamplerProfile::for_mode(
+            mode.prompt_layout,
+            from_lang.as_deref(),
+            to_lang.as_deref(),
+        );
+        run_task_inner(
+            &app,
+            &state,
+            effective_system.as_str(),
+            &user,
+            max_tokens,
+            effective_model,
+            sampler,
+        )
+        .await
+    }
+    #[cfg(not(feature = "llama"))]
+    {
+        let _ = (effective_system, user, max_tokens, effective_model, mode);
+        Err(MagunaError::NoInferenceBackend.to_string())
+    }
 }
 
 #[cfg(feature = "llama")]
@@ -566,24 +679,45 @@ fn spawn_llama_stream_prompt(
     state: &State<'_, AppState>,
     prompt: String,
     max_tokens: usize,
+    model_id: String,
+    reuse_kv: bool,
+    sampler_profile: inference::SamplerProfile,
 ) -> Result<(), String> {
     state.reset_cancel();
     let (model, _) = state.loaded_for_inference().map_err(|e| e.to_string())?;
     let backend = Arc::clone(&state.llama_backend);
     let cancel = state.cancel_infer.clone();
+    let chat_kv = Arc::clone(&state.chat_kv);
     let app_h = app.clone();
     std::thread::spawn(move || {
         if let Err(e) = inference::stream_chat_completion(
             &app_h,
             backend.as_ref(),
             &model,
+            &model_id,
             prompt,
             max_tokens,
             &cancel,
+            chat_kv.as_ref(),
+            reuse_kv,
+            sampler_profile,
         ) {
             let _ = app_h.emit("inference-error", e);
         }
     });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn reset_chat_kv(state: State<'_, AppState>) -> Result<(), String> {
+    #[cfg(feature = "llama")]
+    {
+        state.invalidate_chat_kv();
+    }
+    #[cfg(not(feature = "llama"))]
+    {
+        let _ = state;
+    }
     Ok(())
 }
 
@@ -593,6 +727,7 @@ pub async fn run_mode_chat(
     state: State<'_, AppState>,
     mode_id: String,
     messages: Vec<ChatInvokeMessage>,
+    image_path: Option<String>,
 ) -> Result<(), String> {
     validate_chat_message_shape(&messages)?;
     let list = modes::load_modes(&app).map_err(|e| e.to_string())?;
@@ -612,7 +747,7 @@ pub async fn run_mode_chat(
 
     #[cfg(not(feature = "llama"))]
     {
-        let _ = (app, state, messages, mode);
+        let _ = (app, state, messages, mode, image_path);
         Err(MagunaError::NoInferenceBackend.to_string())
     }
 
@@ -640,30 +775,75 @@ pub async fn run_mode_chat(
             .map(|m| m.content.as_str())
             .unwrap_or("");
         let max_tokens = inferred_generation_cap_from_user_turn(latest_user_turn);
-        spawn_llama_stream_prompt(&app, &state, prompt, max_tokens)
+        let sampler = inference::SamplerProfile::from_prompt_layout(PromptLayout::Chat);
+
+        if let Some(image) = image_path.filter(|p| !p.trim().is_empty()) {
+            let mmproj = storage::resolve_mmproj_path(&app, &effective_model)
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| {
+                    "This model has no vision projector (mmproj). Install Gemma 4 12B from the catalog to attach images."
+                        .to_string()
+                })?;
+            state.invalidate_chat_kv();
+            state.reset_cancel();
+            let (model, _) = state.loaded_for_inference().map_err(|e| e.to_string())?;
+            let backend = Arc::clone(&state.llama_backend);
+            let cancel = state.cancel_infer.clone();
+            let app_h = app.clone();
+            let image_path = std::path::PathBuf::from(image);
+            std::thread::spawn(move || {
+                if let Err(e) = inference::stream_completion_with_image(
+                    &app_h,
+                    backend.as_ref(),
+                    &model,
+                    &mmproj,
+                    &image_path,
+                    &prompt,
+                    max_tokens,
+                    &cancel,
+                    sampler,
+                ) {
+                    let _ = app_h.emit("inference-error", e);
+                }
+            });
+            return Ok(());
+        }
+
+        spawn_llama_stream_prompt(
+            &app,
+            &state,
+            prompt,
+            max_tokens,
+            effective_model,
+            true,
+            sampler,
+        )
     }
 }
 
+#[cfg(feature = "llama")]
 async fn run_task_inner(
     app: &AppHandle,
     state: &State<'_, AppState>,
     system: &str,
     user: &str,
     max_tokens: usize,
+    model_id: String,
+    sampler_profile: inference::SamplerProfile,
 ) -> Result<(), String> {
-    #[cfg(not(feature = "llama"))]
-    {
-        let _ = (app, state, system, user, max_tokens);
-        Err(MagunaError::NoInferenceBackend.to_string())
-    }
-
-    #[cfg(feature = "llama")]
-    {
-        state.reset_cancel();
-        let (_, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
-        let prompt = template.format_prompt(system, user);
-        spawn_llama_stream_prompt(app, state, prompt, max_tokens)
-    }
+    state.reset_cancel();
+    state.invalidate_chat_kv();
+    let (_, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
+    let prompt = template.format_prompt(system, user);
+    spawn_llama_stream_prompt(
+        app,
+        state,
+        prompt,
+        max_tokens,
+        model_id,
+        false,
+        sampler_profile,
+    )
 }
 
 #[cfg(test)]

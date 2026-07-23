@@ -70,8 +70,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { CopyTextControl } from "@/components/copy-text-control";
 import { cn } from "@/lib/utils";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   ClipboardPaste,
+  ImagePlus,
   Loader2,
   MessageSquare,
   RotateCcw,
@@ -110,6 +112,12 @@ export function ModePage() {
   const [inputText, setInputText] = useState("");
   const [fromLang, setFromLang] = useState("en");
   const [toLang, setToLang] = useState("en");
+  /** Hy-MT-style glossary rows for Translate modes (source → target). */
+  const [terminologyRows, setTerminologyRows] = useState<
+    { source: string; target: string }[]
+  >([]);
+  const [keepFormatting, setKeepFormatting] = useState(false);
+  const [chatImagePath, setChatImagePath] = useState<string | null>(null);
   const [out, setOut] = useState("");
   const [busy, setBusy] = useState(false);
   const [inferPhase, setInferPhase] = useState<InferencePhase | null>(null);
@@ -485,6 +493,13 @@ export function ModePage() {
           locale: null,
           fromLang: layout === "plain" ? null : fromLang,
           toLang: layout === "plain" ? null : toLang,
+          terminology:
+            layout === "translate"
+              ? terminologyRows
+                  .filter((r) => r.source.trim() && r.target.trim())
+                  .map((r) => [r.source.trim(), r.target.trim()] as [string, string])
+              : null,
+          keepFormatting: layout === "translate" ? keepFormatting : null,
         });
       } catch (e) {
         setErr(String(e));
@@ -493,7 +508,16 @@ export function ModePage() {
         setBusy(false);
       }
     },
-    [draft, inputText, modeId, layout, fromLang, toLang],
+    [
+      draft,
+      inputText,
+      modeId,
+      layout,
+      fromLang,
+      toLang,
+      terminologyRows,
+      keepFormatting,
+    ],
   );
 
   const onPickModel = useCallback(
@@ -558,6 +582,7 @@ export function ModePage() {
     setActiveChatSessionId(null);
     setChatMessages([]);
     setChatComposerText("");
+    void invoke("reset_chat_kv").catch(() => {});
   }, []);
 
   const openStoredSession = useCallback((entry: ChatSessionArchiveEntry) => {
@@ -566,6 +591,7 @@ export function ModePage() {
     setChatMessages(entry.messages);
     setChatComposerText("");
     setErr(null);
+    void invoke("reset_chat_kv").catch(() => {});
   }, []);
 
   const deleteStoredSession = useCallback(
@@ -607,7 +633,9 @@ export function ModePage() {
         await invoke("run_mode_chat", {
           modeId,
           messages: msgsForInfer,
+          imagePath: chatImagePath,
         });
+        setChatImagePath(null);
       } catch (e) {
         streamModeRef.current = "legacy";
         setErr(String(e));
@@ -618,7 +646,7 @@ export function ModePage() {
         setBusy(false);
       }
     },
-    [draft, modeId, layout, chatComposerText, chatMessages],
+    [draft, modeId, layout, chatComposerText, chatMessages, chatImagePath],
   );
 
   const pasteAndSendChat = useCallback(async () => {
@@ -1093,9 +1121,49 @@ export function ModePage() {
                     disabled={busy}
                   />
                 </div>
+                {chatImagePath ? (
+                  <p className="text-xs text-muted-foreground">
+                    Image attached: {chatImagePath.split(/[/\\]/).pop()}{" "}
+                    <button
+                      type="button"
+                      className="underline"
+                      onClick={() => setChatImagePath(null)}
+                    >
+                      Remove
+                    </button>
+                  </p>
+                ) : null}
               </div>
 
               <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    void (async () => {
+                      try {
+                        const selected = await open({
+                          multiple: false,
+                          filters: [
+                            {
+                              name: "Images",
+                              extensions: ["png", "jpg", "jpeg", "webp", "gif"],
+                            },
+                          ],
+                        });
+                        if (typeof selected === "string") {
+                          setChatImagePath(selected);
+                        }
+                      } catch (e) {
+                        setErr(String(e));
+                      }
+                    })();
+                  }}
+                >
+                  <ImagePlus aria-hidden />
+                  Attach image
+                </Button>
                 <Button
                   type="button"
                   variant="outline"
@@ -1244,6 +1312,77 @@ export function ModePage() {
             <CardTitle className="text-base">Input &amp; output</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {layout === "translate" && fromLang !== toLang ? (
+              <div className="flex flex-col gap-3 rounded-md border border-dashed p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-sm font-medium">Terminology (optional)</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setTerminologyRows((rows) => [
+                        ...rows,
+                        { source: "", target: "" },
+                      ])
+                    }
+                  >
+                    Add term
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Hy-MT-style glossary: preferred source → target pairs for this run.
+                </p>
+                {terminologyRows.map((row, i) => (
+                  <div key={i} className="flex flex-wrap items-end gap-2">
+                    <div className="min-w-[8rem] flex-1">
+                      <Label className="text-xs">Source</Label>
+                      <Input
+                        value={row.source}
+                        onChange={(e) =>
+                          setTerminologyRows((rows) =>
+                            rows.map((r, j) =>
+                              j === i ? { ...r, source: e.target.value } : r,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="min-w-[8rem] flex-1">
+                      <Label className="text-xs">Target</Label>
+                      <Input
+                        value={row.target}
+                        onChange={(e) =>
+                          setTerminologyRows((rows) =>
+                            rows.map((r, j) =>
+                              j === i ? { ...r, target: e.target.value } : r,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        setTerminologyRows((rows) => rows.filter((_, j) => j !== i))
+                      }
+                    >
+                      <Trash2 aria-hidden />
+                    </Button>
+                  </div>
+                ))}
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={keepFormatting}
+                    onChange={(e) => setKeepFormatting(e.target.checked)}
+                  />
+                  Keep formatting / structure
+                </label>
+              </div>
+            ) : null}
             <div className="flex flex-col gap-2">
               <Label htmlFor="run-input">Input</Label>
               <div className="relative">

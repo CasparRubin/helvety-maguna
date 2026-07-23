@@ -15,6 +15,17 @@ export type CatalogEntry = {
   chat_template?: string;
   /** ISO `YYYY-MM-DD` for the upstream instruct checkpoint release when known. */
   release_date?: string | null;
+  /** Optional vision projector GGUF URL for Chat image attach (mmproj). */
+  mmproj_url?: string | null;
+  mmproj_sha256?: string | null;
+  mmproj_size_bytes?: number | null;
+  /**
+   * Optional MTP draft GGUF URL. Maguna downloads and stores this when present;
+   * the decode path uses in-model MTP heads, not this sidecar, today.
+   */
+  mtp_draft_url?: string | null;
+  mtp_draft_sha256?: string | null;
+  mtp_draft_size_bytes?: number | null;
 };
 
 /** Resolved model for a mode + optional per-mode override id. */
