@@ -55,6 +55,12 @@ function AppShell() {
           />
           <h1 className="text-3xl font-bold tracking-tight">Maguna</h1>
           <p className="text-xs text-muted-foreground">On-Device AI</p>
+          <p
+            className="mt-0.5 font-mono text-[0.65rem] tabular-nums text-muted-foreground/80"
+            title="Frontend build time (local)"
+          >
+            v{__MAGUNA_BUILD_STAMP__}
+          </p>
         </div>
         <Separator />
         <nav

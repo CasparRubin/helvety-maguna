@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { AI_OUTPUT_DISCLAIMER_TERMS_ANCHOR } from "@/components/ai-output-disclaimer";
 import { invoke } from "@/lib/tauri-api";
 import type { GuardrailsSettings, ModelThinkingSettings } from "@/lib/types";
 
@@ -377,7 +378,7 @@ export function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id={AI_OUTPUT_DISCLAIMER_TERMS_ANCHOR}>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Scale className="size-4 shrink-0" aria-hidden />

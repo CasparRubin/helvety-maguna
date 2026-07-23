@@ -17,6 +17,10 @@ import type { InferencePhase } from "@/hooks/useInferenceListeners";
 import * as tauriApi from "@/lib/tauri-api";
 import { loadChatSessions, saveChatSessions } from "@/lib/chat-session-archive";
 import { saveModeRunArchive } from "@/lib/mode-run-archive";
+import {
+  AI_OUTPUT_DISCLAIMER_LEAD,
+  AI_OUTPUT_DISCLAIMER_TERMS_HREF,
+} from "@/components/ai-output-disclaimer";
 
 import { ModePage } from "./ModePage";
 
@@ -309,6 +313,12 @@ describe("ModePage", () => {
     expect(screen.getByRole("button", { name: /attach image/i })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /^message$/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^archive$/i })).toBeInTheDocument();
+    const disclaimer = screen.getByTestId("ai-output-disclaimer");
+    expect(disclaimer).toHaveTextContent(AI_OUTPUT_DISCLAIMER_LEAD);
+    expect(within(disclaimer).getByRole("link", { name: /^terms$/i })).toHaveAttribute(
+      "href",
+      AI_OUTPUT_DISCLAIMER_TERMS_HREF,
+    );
 
     fireEvent.click(newChat);
     await waitFor(() => {
@@ -616,6 +626,12 @@ describe("ModePage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /^close$/i }));
 
     expect(await screen.findByText(/terminology \(optional\)/i)).toBeInTheDocument();
+    const disclaimer = screen.getByTestId("ai-output-disclaimer");
+    expect(disclaimer).toHaveTextContent(AI_OUTPUT_DISCLAIMER_LEAD);
+    expect(within(disclaimer).getByRole("link", { name: /^terms$/i })).toHaveAttribute(
+      "href",
+      AI_OUTPUT_DISCLAIMER_TERMS_HREF,
+    );
     fireEvent.click(screen.getByRole("button", { name: /add term/i }));
     const sourceInput = screen
       .getByText(/^source$/i)

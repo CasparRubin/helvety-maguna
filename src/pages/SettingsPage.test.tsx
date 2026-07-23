@@ -5,6 +5,10 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { GuardrailsSettings } from "@/lib/types";
+import {
+  AI_OUTPUT_DISCLAIMER_TERMS_ANCHOR,
+  AI_OUTPUT_DISCLAIMER_TERMS_HREF,
+} from "@/components/ai-output-disclaimer";
 import { SettingsPage } from "./SettingsPage";
 import * as TauriApi from "@/lib/tauri-api";
 
@@ -102,6 +106,12 @@ describe("SettingsPage", () => {
     expect(
       screen.getByText(/Practical habits when working with probabilistic outputs/i),
     ).toBeInTheDocument();
+    expect(screen.getByText(/Verify important facts/i)).toBeInTheDocument();
+    expect(screen.getByText(/Terms & disclaimers \(Maguna\)/i)).toBeInTheDocument();
+    expect(document.getElementById(AI_OUTPUT_DISCLAIMER_TERMS_ANCHOR)).toBeTruthy();
+    expect(AI_OUTPUT_DISCLAIMER_TERMS_HREF).toBe(
+      `/settings#${AI_OUTPUT_DISCLAIMER_TERMS_ANCHOR}`,
+    );
 
     expect(screen.queryByRole("link", { name: /OpenAI/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/openai\.com/i)).not.toBeInTheDocument();

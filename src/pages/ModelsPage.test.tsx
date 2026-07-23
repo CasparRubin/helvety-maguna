@@ -16,6 +16,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type { CatalogEntry, GuardrailsSettings, InstalledModel } from "@/lib/types";
 import { RECOMMENDED_CATALOG_MODEL_ID } from "@/lib/catalog-order";
 import { SHIPPED_CATALOG } from "@/lib/shipped-catalog";
+import { AI_OUTPUT_DISCLAIMER_TERMS_HREF } from "@/components/ai-output-disclaimer";
 import * as TauriApi from "@/lib/tauri-api";
 
 import { ModelsPage } from "./ModelsPage";
@@ -106,7 +107,7 @@ describe("ModelsPage", () => {
       expect(screen.getByRole("heading", { name: /Model library/i })).toBeTruthy();
       expect(screen.getByRole("link", { name: /^Settings$/i })).toHaveAttribute(
         "href",
-        "/settings",
+        AI_OUTPUT_DISCLAIMER_TERMS_HREF,
       );
     });
   });

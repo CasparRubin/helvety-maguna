@@ -30,6 +30,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { AI_OUTPUT_DISCLAIMER_TERMS_HREF } from "@/components/ai-output-disclaimer";
 import {
   formatApproxDownloadGb,
   formatCatalogReleaseDate,
@@ -447,7 +448,7 @@ export function ModelsPage() {
             content). Offline models may still ignore prompts—this is best-effort, not a
             hard filter.{" "}
             <Link
-              to="/settings"
+              to={AI_OUTPUT_DISCLAIMER_TERMS_HREF}
               className="font-medium text-primary underline-offset-4 hover:underline"
             >
               Settings

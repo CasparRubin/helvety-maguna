@@ -75,6 +75,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { AiOutputDisclaimer } from "@/components/ai-output-disclaimer";
 import { CopyTextControl } from "@/components/copy-text-control";
 import { cn } from "@/lib/utils";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -1318,6 +1319,7 @@ export function ModePage() {
                   Last response time: {formatDurationMs(runDurationMs)}
                 </p>
               ) : null}
+              <AiOutputDisclaimer />
             </div>
 
             <Separator />
@@ -1579,6 +1581,7 @@ export function ModePage() {
                 />
               </div>
             </div>
+            <AiOutputDisclaimer />
 
             <Separator />
 
