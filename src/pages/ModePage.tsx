@@ -861,12 +861,12 @@ export function ModePage() {
       </Dialog>
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
-        <DialogContent className="sm:max-w-xl">
+        <DialogContent className="sm:max-w-4xl">
           <DialogHeader className="pr-8">
             <DialogTitle>Mode configuration</DialogTitle>
           </DialogHeader>
 
-          <div className="-mx-4 max-h-[min(60vh,520px)] overflow-y-auto px-4">
+          <div className="-mx-4 max-h-[min(70vh,640px)] overflow-y-auto px-4">
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="mode-name">Name</Label>

@@ -495,10 +495,19 @@ describe("ModePage", () => {
 
     // Sticky-footer composition: default content padding (not p-0 shell), body scrolls,
     // footer stays a sibling so -mx-4 bleed matches DialogContent p-4.
+    // Presence: page-column width (max-w-4xl), shadow-lg panel, dimmed overlay (bg-black/50).
     const dialogClasses = dialog.className.split(/\s+/);
     expect(dialogClasses).toContain("p-4");
+    expect(dialogClasses).toContain("sm:max-w-4xl");
+    expect(dialogClasses).not.toContain("sm:max-w-sm");
+    expect(dialogClasses).not.toContain("sm:max-w-xl");
     expect(dialogClasses).not.toContain("p-0");
     expect(dialogClasses).not.toContain("overflow-y-auto");
+    expect(dialogClasses).toContain("shadow-lg");
+    expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeTruthy();
+    expect(
+      document.querySelector('[data-slot="dialog-overlay"]')?.className.split(/\s+/),
+    ).toEqual(expect.arrayContaining(["bg-black/50"]));
 
     const footer = dialog.querySelector('[data-slot="dialog-footer"]');
     expect(footer).toBeTruthy();
@@ -506,6 +515,7 @@ describe("ModePage", () => {
       (el) => el instanceof HTMLElement && el.classList.contains("overflow-y-auto"),
     );
     expect(scrollBody).toBeTruthy();
+    expect(scrollBody!.className.split(/\s+/)).toContain("max-h-[min(70vh,640px)]");
     expect(scrollBody!.contains(footer!)).toBe(false);
     expect(
       within(dialog).getByRole("button", { name: /save mode/i }),
@@ -806,6 +816,12 @@ describe("ModePage", () => {
       within(dialog).getByRole("heading", { name: /clear archive\?/i }),
     ).toBeInTheDocument();
     expect(within(dialog).getByText(/delete all saved chats/i)).toBeInTheDocument();
+    // Confirm stays compact; shares stronger overlay + elevated panel from Dialog primitive.
+    expect(dialog.className.split(/\s+/)).toContain("sm:max-w-md");
+    expect(dialog.className.split(/\s+/)).toContain("shadow-lg");
+    expect(
+      document.querySelector('[data-slot="dialog-overlay"]')?.className.split(/\s+/),
+    ).toEqual(expect.arrayContaining(["bg-black/50"]));
     // Stock DialogFooter (no sm:gap-0) — both actions present in the footer slot.
     const confirmFooter = dialog.querySelector('[data-slot="dialog-footer"]');
     expect(confirmFooter).toBeTruthy();
