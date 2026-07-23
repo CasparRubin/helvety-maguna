@@ -48,7 +48,13 @@ import type {
 } from "@/lib/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -839,7 +845,7 @@ export function ModePage() {
                 : "Delete all archived runs for this mode? This cannot be undone."}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -855,12 +861,12 @@ export function ModePage() {
       </Dialog>
 
       <Dialog open={configOpen} onOpenChange={setConfigOpen}>
-        <DialogContent className="max-h-[min(90vh,800px)] gap-0 overflow-y-auto p-0 sm:max-w-xl">
-          <div className="flex flex-col gap-6 p-6 pb-4">
-            <DialogHeader className="space-y-2 pr-8">
-              <DialogTitle>Mode configuration</DialogTitle>
-            </DialogHeader>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader className="pr-8">
+            <DialogTitle>Mode configuration</DialogTitle>
+          </DialogHeader>
 
+          <div className="-mx-4 max-h-[min(60vh,520px)] overflow-y-auto px-4">
             <div className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">
                 <Label htmlFor="mode-name">Name</Label>
@@ -938,9 +944,9 @@ export function ModePage() {
               ) : null}
             </div>
 
-            <Separator />
+            <Separator className="my-4" />
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 pb-1">
               <h3 className="text-sm font-medium">Model</h3>
               {installed.length === 0 ? (
                 <Alert>
@@ -1009,7 +1015,7 @@ export function ModePage() {
             </div>
           </div>
 
-          <DialogFooter className="flex flex-row flex-wrap justify-end gap-2 border-t border-border bg-muted/30 p-4 sm:space-x-0">
+          <DialogFooter className="flex-wrap">
             <Button type="button" onClick={() => void saveDraftToList()}>
               Save mode
             </Button>
@@ -1091,20 +1097,22 @@ export function ModePage() {
 
       {isChat ? (
         <Card>
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+          <CardHeader>
             <CardTitle className="text-base inline-flex items-center gap-2">
               <MessageSquare className="size-4 shrink-0" aria-hidden />
               Chat
             </CardTitle>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={startNewChat}
-              disabled={busy}
-            >
-              New chat
-            </Button>
+            <CardAction>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={startNewChat}
+                disabled={busy}
+              >
+                New chat
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <div

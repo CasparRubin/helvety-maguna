@@ -55,7 +55,6 @@ export type ChatMessage = {
 /** How the app builds the user turn before sending it to the local model (`translate` allows same language in and out, e.g. correction). Chat uses `run_mode_chat` instead of `run_mode`. */
 export type PromptLayout = "plain" | "locale" | "translate" | "chat";
 
-/** Mode: system prompt + how the turn is built. Language in/out, when applicable, are set via Edit configuration on the mode page—not for `plain` or `chat` (Chat uses multi-turn Send + `run_mode_chat`). */
 /** Matches Rust `GuardrailsSettingsDto`; `enabled` is always true (guardrails cannot be disabled). */
 export type GuardrailsSettings = {
   enabled: boolean;
@@ -70,6 +69,7 @@ export type ModelThinkingSettings = {
   enabled: boolean;
 };
 
+/** Mode: system prompt + how the turn is built. Language in/out, when applicable, are set via Edit configuration on the mode page—not for `plain` or `chat` (Chat uses multi-turn Send + `run_mode_chat`). */
 export type ModeDefinition = {
   id: string;
   name: string;

@@ -302,12 +302,15 @@ describe("ModePage", () => {
     ).toBeInTheDocument();
     expect(await screen.findByPlaceholderText(/write a message/i)).toBeInTheDocument();
     expect(screen.getByText(/no messages yet/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /new chat/i })).toBeInTheDocument();
+    const newChat = screen.getByRole("button", { name: /new chat/i });
+    expect(newChat).toBeInTheDocument();
+    // CardAction slot (base-nova), not a flex override on CardHeader.
+    expect(newChat.closest('[data-slot="card-action"]')).toBeTruthy();
     expect(screen.getByRole("button", { name: /attach image/i })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: /^message$/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^archive$/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /new chat/i }));
+    fireEvent.click(newChat);
     await waitFor(() => {
       expect(tauriApi.invoke).toHaveBeenCalledWith("reset_chat_kv");
     });
@@ -489,6 +492,30 @@ describe("ModePage", () => {
     expect(within(dialog).getByLabelText(/^name$/i)).toHaveValue("Alpha mode");
     expect(within(dialog).getByLabelText(/^system prompt$/i)).toHaveValue("be helpful");
     expect(within(dialog).queryByLabelText(/^language in$/i)).not.toBeInTheDocument();
+
+    // Sticky-footer composition: default content padding (not p-0 shell), body scrolls,
+    // footer stays a sibling so -mx-4 bleed matches DialogContent p-4.
+    const dialogClasses = dialog.className.split(/\s+/);
+    expect(dialogClasses).toContain("p-4");
+    expect(dialogClasses).not.toContain("p-0");
+    expect(dialogClasses).not.toContain("overflow-y-auto");
+
+    const footer = dialog.querySelector('[data-slot="dialog-footer"]');
+    expect(footer).toBeTruthy();
+    const scrollBody = Array.from(dialog.children).find(
+      (el) => el instanceof HTMLElement && el.classList.contains("overflow-y-auto"),
+    );
+    expect(scrollBody).toBeTruthy();
+    expect(scrollBody!.contains(footer!)).toBe(false);
+    expect(
+      within(dialog).getByRole("button", { name: /save mode/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: /^duplicate$/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: /^delete$/i }),
+    ).toBeInTheDocument();
   });
 
   it("shows Language in/out in dialog for translate layouts", async () => {
@@ -779,6 +806,15 @@ describe("ModePage", () => {
       within(dialog).getByRole("heading", { name: /clear archive\?/i }),
     ).toBeInTheDocument();
     expect(within(dialog).getByText(/delete all saved chats/i)).toBeInTheDocument();
+    // Stock DialogFooter (no sm:gap-0) — both actions present in the footer slot.
+    const confirmFooter = dialog.querySelector('[data-slot="dialog-footer"]');
+    expect(confirmFooter).toBeTruthy();
+    expect(
+      within(confirmFooter as HTMLElement).getByRole("button", { name: /^cancel$/i }),
+    ).toBeInTheDocument();
+    expect(
+      within(confirmFooter as HTMLElement).getByRole("button", { name: /delete all/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText("First chat")).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: /delete all/i }));
