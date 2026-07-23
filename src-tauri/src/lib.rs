@@ -80,6 +80,8 @@ pub fn run() {
             commands::reset_chat_kv,
             commands::get_guardrails_settings,
             commands::set_guardrails_settings,
+            commands::get_model_thinking_settings,
+            commands::set_model_thinking_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, Info, Scale, Shield } from "lucide-react";
+import { ExternalLink, Info, Brain, Scale, Shield } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -13,8 +13,9 @@ import {
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { invoke } from "@/lib/tauri-api";
-import type { GuardrailsSettings } from "@/lib/types";
+import type { GuardrailsSettings, ModelThinkingSettings } from "@/lib/types";
 
 const HELVETY_URL = "https://helvety.com";
 
@@ -173,13 +174,19 @@ function guardrailsStatusSentence(g: GuardrailsSettings): string {
 
 export function SettingsPage() {
   const [guardrails, setGuardrails] = useState<GuardrailsSettings | null>(null);
+  const [thinking, setThinking] = useState<ModelThinkingSettings | null>(null);
+  const [thinkingBusy, setThinkingBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const gr = await invoke<GuardrailsSettings>("get_guardrails_settings");
+      const [gr, th] = await Promise.all([
+        invoke<GuardrailsSettings>("get_guardrails_settings"),
+        invoke<ModelThinkingSettings>("get_model_thinking_settings"),
+      ]);
       setGuardrails(gr);
+      setThinking(th);
     } catch (e) {
       setError(String(e));
     }
@@ -189,13 +196,30 @@ export function SettingsPage() {
     void load();
   }, [load]);
 
+  const toggleThinking = useCallback(async () => {
+    if (!thinking || thinkingBusy) return;
+    const next = !thinking.enabled;
+    setThinkingBusy(true);
+    setError(null);
+    try {
+      await invoke("set_model_thinking_settings", {
+        value: { enabled: next },
+      });
+      setThinking({ enabled: next });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setThinkingBusy(false);
+    }
+  }, [thinking, thinkingBusy]);
+
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-6">
       <header>
         <h2 className="text-2xl font-semibold tracking-tight">Settings</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          About Maguna, guardrails, acceptable use expectations, and limitations of
-          liability.
+          About Maguna, model thinking, guardrails, acceptable use expectations, and
+          limitations of liability.
         </p>
       </header>
 
@@ -204,6 +228,36 @@ export function SettingsPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Brain className="size-4 shrink-0" aria-hidden />
+            Model thinking
+          </CardTitle>
+          <CardDescription>
+            When off (default), Maguna asks Qwen, Gemma 4, and GLM-4.7 for polished
+            answers without a visible chain-of-thought—faster on laptops. Turn on to let
+            those models reason step by step (slower; traces stay in the reply).
+            DeepSeek-R1 and GLM-Z1 keep reasoning on either way.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            type="button"
+            variant={thinking?.enabled ? "default" : "outline"}
+            disabled={thinking == null || thinkingBusy}
+            aria-pressed={thinking?.enabled ?? false}
+            onClick={() => void toggleThinking()}
+          >
+            {thinking == null
+              ? "Loading…"
+              : thinking.enabled
+                ? "Thinking on"
+                : "Thinking off"}
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

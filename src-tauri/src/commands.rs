@@ -79,6 +79,34 @@ pub fn set_guardrails_settings(
         .map_err(|e| e.to_string())
 }
 
+/// Whether Maguna prompts allow model chain-of-thought for Qwen / Gemma 4 / GLM-4.7 Flash.
+/// DeepSeek-R1 / GLM-Z1 keep reasoning on regardless of this setting.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelThinkingSettingsDto {
+    pub enabled: bool,
+}
+
+#[tauri::command]
+pub fn get_model_thinking_settings(
+    state: State<'_, AppState>,
+) -> Result<ModelThinkingSettingsDto, String> {
+    Ok(ModelThinkingSettingsDto {
+        enabled: state.enable_model_thinking(),
+    })
+}
+
+#[tauri::command]
+pub fn set_model_thinking_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    value: ModelThinkingSettingsDto,
+) -> Result<(), String> {
+    state
+        .set_enable_model_thinking(&app, value.enabled)
+        .map_err(|e| e.to_string())
+}
+
 fn validate_chat_message_shape(messages: &[ChatInvokeMessage]) -> Result<(), String> {
     if messages.is_empty() {
         return Err("Chat requires at least one user message.".into());
@@ -120,11 +148,12 @@ fn truncate_chat_invoke_messages(
     template: ChatTemplate,
     system: &str,
     messages: &mut Vec<ChatInvokeMessage>,
+    enable_thinking: bool,
 ) {
     const CHAR_BUDGET: usize = 12_000;
     loop {
         let pieces = chat_messages_to_piece_refs(messages);
-        let prompt = template.format_prompt_chat(system, &pieces);
+        let prompt = template.format_prompt_chat(system, &pieces, enable_thinking);
         if prompt.len() <= CHAR_BUDGET || messages.len() <= 1 {
             break;
         }
@@ -763,11 +792,18 @@ pub async fn run_mode_chat(
         }
 
         let (_, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
+        let enable_thinking = state.enable_model_thinking();
         let effective_system =
             guardrails::compose_effective_system(&mode.system_prompt, &state.persisted_snapshot());
-        truncate_chat_invoke_messages(template, effective_system.as_str(), &mut messages);
+        truncate_chat_invoke_messages(
+            template,
+            effective_system.as_str(),
+            &mut messages,
+            enable_thinking,
+        );
         let pieces = chat_messages_to_piece_refs(&messages);
-        let prompt = template.format_prompt_chat(effective_system.as_str(), &pieces);
+        let prompt =
+            template.format_prompt_chat(effective_system.as_str(), &pieces, enable_thinking);
         let latest_user_turn = messages
             .iter()
             .rev()
@@ -834,7 +870,7 @@ async fn run_task_inner(
     state.reset_cancel();
     state.invalidate_chat_kv();
     let (_, template) = state.loaded_for_inference().map_err(|e| e.to_string())?;
-    let prompt = template.format_prompt(system, user);
+    let prompt = template.format_prompt(system, user, state.enable_model_thinking());
     spawn_llama_stream_prompt(
         app,
         state,
@@ -1052,5 +1088,24 @@ mod guardrails_settings_dto_tests {
             text.contains("Maguna content policy"),
             "UI must receive the canonical built-in wording"
         );
+    }
+}
+
+#[cfg(test)]
+mod model_thinking_settings_dto_tests {
+    use super::ModelThinkingSettingsDto;
+
+    #[test]
+    fn deserialize_camel_case_enabled() {
+        let d: ModelThinkingSettingsDto = serde_json::from_str(r#"{"enabled":true}"#).unwrap();
+        assert!(d.enabled);
+    }
+
+    #[test]
+    fn serialize_uses_camel_case_enabled() {
+        let dto = ModelThinkingSettingsDto { enabled: false };
+        let value = serde_json::to_value(&dto).unwrap();
+        assert_eq!(value.get("enabled").and_then(|v| v.as_bool()), Some(false));
+        assert!(value.get("Enabled").is_none());
     }
 }

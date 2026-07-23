@@ -17,7 +17,7 @@ import { useModesNav } from "@/context/modes-nav-context";
 import {
   stripChatArtifacts,
   visibleInferenceOutput,
-  modelPreservesReasoningTrace,
+  shouldPreserveReasoningTrace,
 } from "@/lib/inference-output";
 import {
   clearChatSessions,
@@ -44,6 +44,7 @@ import type {
   InstalledModel,
   ModeDefinition,
   ModeModelBinding,
+  ModelThinkingSettings,
 } from "@/lib/types";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -72,6 +73,7 @@ import { CopyTextControl } from "@/components/copy-text-control";
 import { cn } from "@/lib/utils";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  Brain,
   ClipboardPaste,
   ImagePlus,
   Loader2,
@@ -126,6 +128,9 @@ export function ModePage() {
   const [cancelling, setCancelling] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [enableModelThinking, setEnableModelThinking] = useState(false);
+  const [thinkingBusy, setThinkingBusy] = useState(false);
+  const enableModelThinkingRef = useRef(false);
   const [clearArchiveConfirm, setClearArchiveConfirm] =
     useState<ClearArchiveTarget | null>(null);
   const [archive, setArchive] = useState<ModeRunArchiveEntry[]>([]);
@@ -162,6 +167,46 @@ export function ModePage() {
   useEffect(() => {
     effectiveModelIdRef.current = modelBinding?.effective_model_id ?? null;
   }, [modelBinding?.effective_model_id]);
+
+  useEffect(() => {
+    enableModelThinkingRef.current = enableModelThinking;
+  }, [enableModelThinking]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const th = await invoke<ModelThinkingSettings>("get_model_thinking_settings");
+        if (!cancelled) {
+          enableModelThinkingRef.current = th.enabled;
+          setEnableModelThinking(th.enabled);
+        }
+      } catch {
+        /* keep default off */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [modeId]);
+
+  const toggleModelThinking = useCallback(async () => {
+    if (thinkingBusy) return;
+    const next = !enableModelThinking;
+    setThinkingBusy(true);
+    setErr(null);
+    try {
+      await invoke("set_model_thinking_settings", {
+        value: { enabled: next },
+      });
+      enableModelThinkingRef.current = next;
+      setEnableModelThinking(next);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setThinkingBusy(false);
+    }
+  }, [enableModelThinking, thinkingBusy]);
 
   const selectedMode = useMemo(
     () => (modeId ? modes.find((m) => m.id === modeId) : undefined),
@@ -243,7 +288,10 @@ export function ModePage() {
     onChunk: (s) => {
       streamOutRef.current += s;
       const outputOpts = {
-        preserveReasoning: modelPreservesReasoningTrace(effectiveModelIdRef.current),
+        preserveReasoning: shouldPreserveReasoningTrace(
+          effectiveModelIdRef.current,
+          enableModelThinkingRef.current,
+        ),
       };
       const visible = visibleInferenceOutput(streamOutRef.current, outputOpts);
       if (streamModeRef.current === "chat") {
@@ -273,8 +321,9 @@ export function ModePage() {
           });
         } else {
           const outputOpts = {
-            preserveReasoning: modelPreservesReasoningTrace(
+            preserveReasoning: shouldPreserveReasoningTrace(
               effectiveModelIdRef.current,
+              enableModelThinkingRef.current,
             ),
           };
           const finalOut = stripChatArtifacts(streamOutRef.current, outputOpts);
@@ -334,7 +383,10 @@ export function ModePage() {
 
       const mid = modeIdRef.current;
       const outputOpts = {
-        preserveReasoning: modelPreservesReasoningTrace(effectiveModelIdRef.current),
+        preserveReasoning: shouldPreserveReasoningTrace(
+          effectiveModelIdRef.current,
+          enableModelThinkingRef.current,
+        ),
       };
       const finalOut = stripChatArtifacts(streamOutRef.current, outputOpts);
       if (mid) {
@@ -735,16 +787,35 @@ export function ModePage() {
     >
       <header className="flex items-start justify-between gap-4">
         <h2 className="text-2xl font-semibold tracking-tight">{draft.name}</h2>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="shrink-0 gap-2"
-          onClick={() => setConfigOpen(true)}
-        >
-          <Settings2 className="size-4" aria-hidden />
-          Edit configuration
-        </Button>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <Button
+            type="button"
+            variant={enableModelThinking ? "default" : "outline"}
+            size="sm"
+            className="gap-2"
+            disabled={thinkingBusy || busy}
+            aria-pressed={enableModelThinking}
+            title={
+              enableModelThinking
+                ? "Thinking on for Qwen / Gemma 4 / GLM-4.7 — chain-of-thought may appear (slower). DeepSeek-R1 / GLM-Z1 always reason."
+                : "Thinking off for Qwen / Gemma 4 / GLM-4.7 — polished answers. DeepSeek-R1 / GLM-Z1 still show reasoning."
+            }
+            onClick={() => void toggleModelThinking()}
+          >
+            <Brain className="size-4" aria-hidden />
+            {enableModelThinking ? "Thinking on" : "Thinking off"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            onClick={() => setConfigOpen(true)}
+          >
+            <Settings2 className="size-4" aria-hidden />
+            Edit configuration
+          </Button>
+        </div>
       </header>
 
       {err ? (

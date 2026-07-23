@@ -126,6 +126,8 @@ describe("ModePage", () => {
       if (cmd === "run_mode_chat" || cmd === "run_mode" || cmd === "reset_chat_kv") {
         return undefined;
       }
+      if (cmd === "get_model_thinking_settings") return { enabled: false };
+      if (cmd === "set_model_thinking_settings") return undefined;
       throw new Error(`unhandled invoke in test: ${cmd}`);
     });
   });
@@ -210,6 +212,8 @@ describe("ModePage", () => {
       }
       if (cmd === "run_mode_chat") return new Promise(() => {});
       if (cmd === "reset_chat_kv") return undefined;
+      if (cmd === "get_model_thinking_settings") return { enabled: false };
+      if (cmd === "set_model_thinking_settings") return undefined;
       throw new Error(`unhandled invoke in test: ${cmd}`);
     });
 
@@ -394,9 +398,71 @@ describe("ModePage", () => {
     expect(
       screen.getByRole("button", { name: /edit configuration/i }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Thinking off/i })).toBeInTheDocument();
     expect(screen.getByText("Input & output")).toBeInTheDocument();
     expect(screen.queryByText(/open mode configuration/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/use input and output below/i)).not.toBeInTheDocument();
+  });
+
+  it("toggles model thinking via the header button", async () => {
+    const modeId = "vitest-thinking-toggle";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Think UI",
+        system_prompt: "x",
+        prompt_layout: "chat",
+        max_tokens: 64,
+        builtin: false,
+      },
+    ];
+
+    renderAtMode(`/mode/${modeId}`);
+
+    const btn = await screen.findByRole("button", { name: /Thinking off/i });
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith("set_model_thinking_settings", {
+        value: { enabled: true },
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: /Thinking on/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("loads Thinking on when get_model_thinking_settings returns enabled", async () => {
+    const modeId = "vitest-thinking-enabled";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Think On UI",
+        system_prompt: "x",
+        prompt_layout: "plain",
+        max_tokens: 64,
+        builtin: false,
+      },
+    ];
+
+    vi.mocked(tauriApi.invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_installed_models") return [];
+      if (cmd === "get_mode_model_binding") {
+        return { effective_model_id: "model-1", override_model_id: null };
+      }
+      if (cmd === "get_model_thinking_settings") return { enabled: true };
+      if (cmd === "set_model_thinking_settings") return undefined;
+      if (cmd === "run_mode" || cmd === "run_mode_chat" || cmd === "reset_chat_kv") {
+        return undefined;
+      }
+      throw new Error(`unhandled invoke in test: ${cmd}`);
+    });
+
+    renderAtMode(`/mode/${modeId}`);
+
+    expect(
+      await screen.findByRole("button", { name: /Thinking on/i }),
+    ).toBeInTheDocument();
   });
 
   it("opens Edit configuration dialog with name and system prompt fields", async () => {
@@ -585,6 +651,8 @@ describe("ModePage", () => {
       if (cmd === "run_mode" || cmd === "run_mode_chat" || cmd === "reset_chat_kv") {
         return undefined;
       }
+      if (cmd === "get_model_thinking_settings") return { enabled: false };
+      if (cmd === "set_model_thinking_settings") return undefined;
       throw new Error(`unhandled invoke in test: ${cmd}`);
     });
 

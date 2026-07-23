@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -12,12 +12,22 @@ vi.mock("@/lib/tauri-api", () => ({
   invoke: vi.fn(),
 }));
 
-function renderSettings(invokePayload: GuardrailsSettings) {
-  vi.mocked(TauriApi.invoke).mockImplementation((cmd: string) => {
+function renderSettings(invokePayload: GuardrailsSettings, thinkingEnabled = false) {
+  vi.mocked(TauriApi.invoke).mockImplementation((cmd: string, args?: unknown) => {
     if (cmd === "get_guardrails_settings") {
       return Promise.resolve(invokePayload);
     }
-    return Promise.reject(new Error(`unexpected invoke in SettingsPage test: ${cmd}`));
+    if (cmd === "get_model_thinking_settings") {
+      return Promise.resolve({ enabled: thinkingEnabled });
+    }
+    if (cmd === "set_model_thinking_settings") {
+      return Promise.resolve(undefined);
+    }
+    return Promise.reject(
+      new Error(
+        `unexpected invoke in SettingsPage test: ${cmd} ${JSON.stringify(args ?? null)}`,
+      ),
+    );
   });
   return render(
     <MemoryRouter initialEntries={["/settings"]}>
@@ -44,8 +54,10 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("heading", { name: "Settings" })).toBeTruthy();
     await waitFor(() => {
       expect(TauriApi.invoke).toHaveBeenCalledWith("get_guardrails_settings");
+      expect(TauriApi.invoke).toHaveBeenCalledWith("get_model_thinking_settings");
     });
     await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Thinking off/i })).toBeTruthy();
       const builtInArea = screen.getByLabelText(
         /Built-in Maguna policy/i,
       ) as HTMLTextAreaElement;
@@ -135,5 +147,43 @@ describe("SettingsPage", () => {
       expect(alert).toHaveAttribute("role", "alert");
       expect(alert?.className).toMatch(/text-destructive/);
     });
+  });
+
+  it("toggles model thinking and persists via set_model_thinking_settings", async () => {
+    renderSettings(
+      {
+        enabled: true,
+        customText: null,
+        builtInPolicyText: baseBuiltin,
+      },
+      false,
+    );
+
+    const btn = await screen.findByRole("button", { name: /Thinking off/i });
+    fireEvent.click(btn);
+
+    await waitFor(() => {
+      expect(TauriApi.invoke).toHaveBeenCalledWith("set_model_thinking_settings", {
+        value: { enabled: true },
+      });
+    });
+    expect(
+      await screen.findByRole("button", { name: /Thinking on/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows Thinking on when settings load with thinking enabled", async () => {
+    renderSettings(
+      {
+        enabled: true,
+        customText: null,
+        builtInPolicyText: baseBuiltin,
+      },
+      true,
+    );
+
+    expect(
+      await screen.findByRole("button", { name: /Thinking on/i }),
+    ).toBeInTheDocument();
   });
 });

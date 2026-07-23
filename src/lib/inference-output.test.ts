@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   modelPreservesReasoningTrace,
+  shouldPreserveReasoningTrace,
   stripChatArtifacts,
   visibleInferenceOutput,
 } from "./inference-output";
@@ -76,9 +77,10 @@ describe("stripChatArtifacts", () => {
   });
 
   it("strips GLM control tokens and thinking blocks", () => {
-    const glmOpen = "<" + "redacted_thinking" + ">";
-    const glmClose = "</" + "redacted_thinking" + ">";
-    expect(stripChatArtifacts(`Answer${glmOpen}steps${glmClose}`)).toBe("Answer");
+    const glmOpen = "<" + "think" + ">";
+    const glmClose = "</" + "think" + ">";
+    // Model emits think block then answer (same markers as Qwen).
+    expect(stripChatArtifacts(`${glmOpen}steps${glmClose}Answer`)).toBe("Answer");
     expect(stripChatArtifacts(`Answer${glmOpen}steps`)).toBe("Answer");
     expect(stripChatArtifacts("Hi[gMASK]")).toBe("Hi");
     expect(stripChatArtifacts("Hi<sop>")).toBe("Hi");
@@ -109,9 +111,9 @@ describe("stripChatArtifacts", () => {
     ).toBe(`hidden${open}steps${close}Answer`);
   });
 
-  it("preserves GLM redacted_thinking when requested", () => {
-    const glmOpen = "<" + "redacted_thinking" + ">";
-    const glmClose = "</" + "redacted_thinking" + ">";
+  it("preserves GLM thinking markers when requested", () => {
+    const glmOpen = "<" + "think" + ">";
+    const glmClose = "</" + "think" + ">";
     expect(
       stripChatArtifacts(`trace${glmOpen}steps${glmClose}Answer`, {
         preserveReasoning: true,
@@ -153,5 +155,18 @@ describe("modelPreservesReasoningTrace", () => {
     expect(modelPreservesReasoningTrace("glm-4.7-flash-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace("hy-mt15-7b-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace(null)).toBe(false);
+  });
+});
+
+describe("shouldPreserveReasoningTrace", () => {
+  it("is true when the Settings toggle is on even for polished models", () => {
+    expect(shouldPreserveReasoningTrace("qwen3.5-9b-q4km", true)).toBe(true);
+    expect(shouldPreserveReasoningTrace("gemma-4-12b-it-q4km", false)).toBe(false);
+  });
+
+  it("is true for reasoning model ids regardless of the toggle", () => {
+    expect(shouldPreserveReasoningTrace("deepseek-r1-0528-qwen3-8b-q4km", false)).toBe(
+      true,
+    );
   });
 });

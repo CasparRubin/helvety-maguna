@@ -4,21 +4,22 @@
 //! built-in or custom text) plus mode-specific prose from [`crate::modes::ModeDefinition`] (defaults in [`crate::prompts`],
 //! overrides in `modes.json`).
 //!
-//! Qwen2.x / Qwen3 / Qwen3.5 / Qwen3.6 instruct uses ChatML (`im_start` / `im_end`) with thinking
-//! disabled via an empty `think` block before generation (matches `enable_thinking=false`).
-//! DeepSeek-R1 distill uses the same ChatML layout but keeps thinking enabled (`qwen2_instruct_reasoning`).
+//! Qwen2.x / Qwen3 / Qwen3.5 / Qwen3.6 instruct uses ChatML (`im_start` / `im_end`). Maguna
+//! defaults to thinking off (empty `think` block; matches `enable_thinking=false`); Settings can
+//! turn thinking on. DeepSeek-R1 distill (`qwen2_instruct_reasoning`) keeps thinking enabled.
 //! Ministral 3 and Moonshot Moonlight / Kimi K2 use `im_system` / `im_user` / `im_middle` tokens.
 //! Google Gemma 2 uses `<start_of_turn>` turns; Gemma 4 uses `<|turn>` / `<turn|>` with an empty
-//! `<|channel>thought` / `<channel|>` prefix when thinking is off.
+//! `<|channel>thought` / `<channel|>` prefix when thinking is off (Settings can open the thought channel).
 //! Microsoft Phi-4 mini uses `<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`.
 //! Tencent Hunyuan dense uses `<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`.
 //! Z.ai GLM-4 9B uses `[gMASK]<sop>` plus `<|system|>` / `<|user|>` / `<|assistant|>`.
-//! GLM-4.7 Flash appends `/nothink` on user turns and closes prior thinking blocks in assistant history.
-//! GLM-Z1 opens `<think>` at generation time for reasoning imports.
+//! GLM-4.7 Flash appends `/nothink` on user turns when thinking is off; Settings can omit it.
+//! GLM-Z1 opens a think block at generation time for reasoning imports.
 //!
 //! Filename / display-name hints (used for GGUF imports) are always compiled.
 //! The resolved enum is compiled with the `llama` feature. `ChatTemplate::format_prompt` wraps
 //! one system + user turn; multi-turn Chat uses `format_prompt_chat` on the same variants.
+//! Both take an `enable_thinking` setting flag (reasoning templates ignore it and stay on).
 
 /// If a hint (imported file stem, display name, etc.) looks like a known instruct
 /// family, returns the manifest/catalog key (`mistral_instruct`, `qwen2_instruct`, …).
@@ -109,13 +110,13 @@ pub enum ChatTemplate {
     TinyLlamaV1,
     Llama3Instruct,
     MistralInstruct,
-    /// Qwen2 / Qwen2.5 / Qwen3 / Qwen3.5 / Qwen3.6 instruct (ChatML, thinking disabled).
+    /// Qwen2 / Qwen2.5 / Qwen3 / Qwen3.5 / Qwen3.6 instruct (ChatML; thinking off by default via Settings).
     QwenChatMl,
-    /// Qwen ChatML with thinking enabled (DeepSeek-R1 distill and similar reasoning models).
+    /// Qwen ChatML with thinking always enabled (DeepSeek-R1 distill and similar reasoning models).
     QwenChatMlReasoning,
     /// Google Gemma 2 instruction-tuned (`start_of_turn` / `end_of_turn`).
     Gemma2It,
-    /// Google Gemma 4 instruction-tuned (`<|turn>` / `<turn|>` + channel prefix).
+    /// Google Gemma 4 instruction-tuned (`<|turn>` / `<turn|>` + channel prefix; thinking off by default).
     Gemma4It,
     /// Mistral 3 / Ministral instruct (mistral-common token layout).
     Mistral3Instruct,
@@ -127,9 +128,9 @@ pub enum ChatTemplate {
     HunyuanDense,
     /// Z.ai GLM-4 9B instruct (`[gMASK]<sop>` + role tokens).
     Glm4Instruct,
-    /// Z.ai GLM-4.7 Flash MoE (`/nothink` on user turns, thinking disabled for polished copy).
+    /// Z.ai GLM-4.7 Flash MoE (`/nothink` on user turns when thinking is off; toggleable in Settings).
     Glm47Flash,
-    /// Z.ai GLM-Z1 reasoning (`<|assistant|><think>` generation prefix).
+    /// Z.ai GLM-Z1 reasoning (opens a think block at generation time; always on).
     Glm4Z1Reasoning,
 }
 
@@ -137,8 +138,12 @@ pub enum ChatTemplate {
 const GLM4_PREFIX: &str = "[gMASK]<sop>";
 
 #[cfg(feature = "llama")]
-fn glm47_user_turn(user: &str) -> String {
-    if user.ends_with("/nothink") {
+fn glm47_user_turn(user: &str, enable_thinking: bool) -> String {
+    if enable_thinking {
+        user.strip_suffix("/nothink")
+            .map(str::to_string)
+            .unwrap_or_else(|| user.to_string())
+    } else if user.ends_with("/nothink") {
         user.to_string()
     } else {
         format!("{user}/nothink")
@@ -147,12 +152,18 @@ fn glm47_user_turn(user: &str) -> String {
 
 #[cfg(feature = "llama")]
 fn glm47_assistant_history(text: &str) -> String {
-    const THINK_CLOSE: &str = concat!("</", "redacted_thinking", ">");
+    const THINK_CLOSE: &str = concat!("</", "think", ">");
     format!("<|assistant|>{THINK_CLOSE}{text}")
 }
 
 #[cfg(feature = "llama")]
-const GLM4_Z1_GEN_PREFIX: &str = concat!("<|assistant|><", "redacted_thinking", ">");
+fn glm_assistant_gen_prefix(enable_thinking: bool) -> String {
+    if enable_thinking {
+        concat!("<|assistant|><", "think", ">").to_string()
+    } else {
+        "<|assistant|>".to_string()
+    }
+}
 
 #[cfg(feature = "llama")]
 fn qwen_chatml_assistant_gen_prefix(disable_thinking: bool) -> String {
@@ -179,12 +190,23 @@ fn qwen_chatml_assistant_history(text: &str, disable_thinking: bool) -> String {
     }
 }
 
+/// Thinking off: empty thought channel then answer. Thinking on: open thought for the model to fill.
 #[cfg(feature = "llama")]
-const GEMMA4_MODEL_GEN_PREFIX: &str = "<|turn>model\n<|channel>thought\n<channel|>";
+fn gemma4_model_gen_prefix(enable_thinking: bool) -> &'static str {
+    if enable_thinking {
+        "<|turn>model\n<|channel>thought\n"
+    } else {
+        "<|turn>model\n<|channel>thought\n<channel|>"
+    }
+}
 
 #[cfg(feature = "llama")]
-fn gemma4_assistant_history(text: &str) -> String {
-    format!("<|turn>model\n<|channel>thought\n<channel|>{text}<turn|>\n")
+fn gemma4_assistant_history(text: &str, enable_thinking: bool) -> String {
+    if enable_thinking {
+        format!("<|turn>model\n{text}<turn|>\n")
+    } else {
+        format!("<|turn>model\n<|channel>thought\n<channel|>{text}<turn|>\n")
+    }
 }
 
 #[cfg(feature = "llama")]
@@ -256,11 +278,31 @@ impl ChatTemplate {
             .unwrap_or(Self::TinyLlamaV1)
     }
 
-    pub fn format_prompt(self, system: &str, user: &str) -> String {
+    /// DeepSeek-R1 / GLM-Z1 keep thinking on; the Settings toggle enables it for everyday Qwen / Gemma 4 / GLM-4.7.
+    pub fn resolve_enable_thinking(self, setting: bool) -> bool {
+        match self {
+            Self::QwenChatMlReasoning | Self::Glm4Z1Reasoning => true,
+            Self::QwenChatMl | Self::Gemma4It | Self::Glm47Flash => setting,
+            Self::TinyLlamaV1
+            | Self::Llama3Instruct
+            | Self::MistralInstruct
+            | Self::Mistral3Instruct
+            | Self::Gemma2It
+            | Self::KimiMoonshot
+            | Self::Phi4Instruct
+            | Self::HunyuanDense
+            | Self::Glm4Instruct => false,
+        }
+    }
+
+    pub fn format_prompt(self, system: &str, user: &str, enable_thinking: bool) -> String {
         const IM_END: &str = concat!("<|", "im_end", "|>");
         const K_SYS: &str = concat!("<|", "im_system", "|>system<|", "im_middle", "|>");
         const K_USER: &str = concat!("<|", "im_user", "|>user<|", "im_middle", "|>");
         const K_ASST: &str = concat!("<|", "im_assistant", "|>assistant<|", "im_middle", "|>");
+        // Reasoning catalog/import templates keep CoT on; the setting enables it for Qwen / Gemma 4 / GLM-4.7.
+        let thinking = self.resolve_enable_thinking(enable_thinking);
+        let disable_thinking = !thinking;
 
         match self {
             Self::TinyLlamaV1 => {
@@ -278,13 +320,17 @@ impl ChatTemplate {
                 // Mistral 7B Instruct: single [INST] block (system + user), then assistant generation.
                 format!("<s>[INST] {system}\n\n{user} [/INST]")
             }
-            Self::QwenChatMl => format_qwen_chatml_prompt(system, user, true),
-            Self::QwenChatMlReasoning => format_qwen_chatml_prompt(system, user, false),
+            Self::QwenChatMl | Self::QwenChatMlReasoning => {
+                format_qwen_chatml_prompt(system, user, disable_thinking)
+            }
             Self::Gemma2It => format!(
                 "<start_of_turn>user\n{system}\n\n{user}<end_of_turn>\n<start_of_turn>model\n"
             ),
             Self::Gemma4It => {
-                format!("<|turn>user\n{system}\n\n{user}<turn|>\n{GEMMA4_MODEL_GEN_PREFIX}")
+                format!(
+                    "<|turn>user\n{system}\n\n{user}<turn|>\n{}",
+                    gemma4_model_gen_prefix(thinking)
+                )
             }
             Self::Mistral3Instruct | Self::KimiMoonshot => {
                 format!("{K_SYS}{system}{IM_END}{K_USER}{user}{IM_END}{K_ASST}")
@@ -296,23 +342,35 @@ impl ChatTemplate {
             Self::Glm4Instruct => {
                 format!("{GLM4_PREFIX}<|system|>{system}<|user|>{user}<|assistant|>")
             }
+            // Hybrid thinking: omit `/nothink` when enabled; do not force a Z1-style open think tag.
             Self::Glm47Flash => {
-                let user_turn = glm47_user_turn(user);
+                let user_turn = glm47_user_turn(user, thinking);
                 format!("{GLM4_PREFIX}<|system|>{system}<|user|>{user_turn}<|assistant|>")
             }
             Self::Glm4Z1Reasoning => {
-                format!("{GLM4_PREFIX}<|system|>{system}<|user|>{user}{GLM4_Z1_GEN_PREFIX}")
+                let user_turn = glm47_user_turn(user, thinking);
+                format!(
+                    "{GLM4_PREFIX}<|system|>{system}<|user|>{user_turn}{}",
+                    glm_assistant_gen_prefix(thinking)
+                )
             }
         }
     }
 
     /// Multi-turn: `pieces` must start with `User` and alternate; the last piece is the latest user
     /// message to answer. Output ends with an open assistant generation prefix.
-    pub fn format_prompt_chat(self, system: &str, pieces: &[(ChatPieceRole, &str)]) -> String {
+    pub fn format_prompt_chat(
+        self,
+        system: &str,
+        pieces: &[(ChatPieceRole, &str)],
+        enable_thinking: bool,
+    ) -> String {
         const IM_END: &str = concat!("<|", "im_end", "|>");
         const K_SYS: &str = concat!("<|", "im_system", "|>system<|", "im_middle", "|>");
         const K_USER: &str = concat!("<|", "im_user", "|>user<|", "im_middle", "|>");
         const K_ASST: &str = concat!("<|", "im_assistant", "|>assistant<|", "im_middle", "|>");
+        let thinking = self.resolve_enable_thinking(enable_thinking);
+        let disable_thinking = !thinking;
 
         match self {
             Self::TinyLlamaV1 => {
@@ -375,8 +433,9 @@ impl ChatTemplate {
                 }
                 out
             }
-            Self::QwenChatMl => format_qwen_chatml_chat(system, pieces, true),
-            Self::QwenChatMlReasoning => format_qwen_chatml_chat(system, pieces, false),
+            Self::QwenChatMl | Self::QwenChatMlReasoning => {
+                format_qwen_chatml_chat(system, pieces, disable_thinking)
+            }
             Self::Gemma2It => {
                 let mut s = String::new();
                 for (idx, &(role, text)) in pieces.iter().enumerate() {
@@ -410,11 +469,11 @@ impl ChatTemplate {
                             }
                         }
                         ChatPieceRole::Assistant => {
-                            s.push_str(&gemma4_assistant_history(text));
+                            s.push_str(&gemma4_assistant_history(text, thinking));
                         }
                     }
                 }
-                s.push_str(GEMMA4_MODEL_GEN_PREFIX);
+                s.push_str(gemma4_model_gen_prefix(thinking));
                 s
             }
             Self::Mistral3Instruct | Self::KimiMoonshot => {
@@ -485,10 +544,14 @@ impl ChatTemplate {
                 for &(role, text) in pieces {
                     match role {
                         ChatPieceRole::User => {
-                            s.push_str(&format!("<|user|>{}", glm47_user_turn(text)));
+                            s.push_str(&format!("<|user|>{}", glm47_user_turn(text, thinking)));
                         }
                         ChatPieceRole::Assistant => {
-                            s.push_str(&glm47_assistant_history(text));
+                            if thinking {
+                                s.push_str(&format!("<|assistant|>{text}"));
+                            } else {
+                                s.push_str(&glm47_assistant_history(text));
+                            }
                         }
                     }
                 }
@@ -500,14 +563,18 @@ impl ChatTemplate {
                 for &(role, text) in pieces {
                     match role {
                         ChatPieceRole::User => {
-                            s.push_str(&format!("<|user|>{text}"));
+                            s.push_str(&format!("<|user|>{}", glm47_user_turn(text, thinking)));
                         }
                         ChatPieceRole::Assistant => {
-                            s.push_str(&glm47_assistant_history(text));
+                            if thinking {
+                                s.push_str(&format!("<|assistant|>{text}"));
+                            } else {
+                                s.push_str(&glm47_assistant_history(text));
+                            }
                         }
                     }
                 }
-                s.push_str(GLM4_Z1_GEN_PREFIX);
+                s.push_str(&glm_assistant_gen_prefix(thinking));
                 s
             }
         }
@@ -520,11 +587,47 @@ mod llama_chat_template_tests {
 
     #[test]
     fn gemma4_it_single_turn_uses_turn_and_empty_channel() {
-        let p = ChatTemplate::Gemma4It.format_prompt("SYS", "hello");
+        let p = ChatTemplate::Gemma4It.format_prompt("SYS", "hello", false);
         assert_eq!(
             p,
             "<|turn>user\nSYS\n\nhello<turn|>\n<|turn>model\n<|channel>thought\n<channel|>"
         );
+    }
+
+    #[test]
+    fn gemma4_it_thinking_opens_thought_channel() {
+        let p = ChatTemplate::Gemma4It.format_prompt("SYS", "hello", true);
+        assert_eq!(
+            p,
+            "<|turn>user\nSYS\n\nhello<turn|>\n<|turn>model\n<|channel>thought\n"
+        );
+    }
+
+    #[test]
+    fn qwen_chatml_thinking_on_skips_empty_think_block() {
+        let p = ChatTemplate::QwenChatMl.format_prompt("SYS", "hello", true);
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        assert!(!p.contains(THINK_OPEN), "{p}");
+        assert!(p.ends_with("assistant\n"), "{p}");
+    }
+
+    #[test]
+    fn qwen_chatml_thinking_off_inserts_empty_think_block() {
+        let p = ChatTemplate::QwenChatMl.format_prompt("SYS", "hello", false);
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        const THINK_CLOSE: &str = concat!("</", "think", ">");
+        assert!(
+            p.contains(&format!("{THINK_OPEN}\n\n{THINK_CLOSE}\n\n")),
+            "{p}"
+        );
+    }
+
+    #[test]
+    fn qwen_reasoning_ignores_setting_false_and_stays_open() {
+        let p = ChatTemplate::QwenChatMlReasoning.format_prompt("SYS", "hello", false);
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        assert!(!p.contains(THINK_OPEN), "{p}");
+        assert!(p.ends_with("assistant\n"), "{p}");
     }
 
     #[test]
@@ -535,7 +638,7 @@ mod llama_chat_template_tests {
             (ChatPieceRole::Assistant, "hello"),
             (ChatPieceRole::User, "second"),
         ];
-        let p = t.format_prompt_chat("SYS", &pieces);
+        let p = t.format_prompt_chat("SYS", &pieces, false);
         const THINK_OPEN: &str = concat!("<", "think", ">");
         const THINK_CLOSE: &str = concat!("</", "think", ">");
         assert!(
@@ -552,7 +655,7 @@ mod llama_chat_template_tests {
             (ChatPieceRole::Assistant, "reply"),
             (ChatPieceRole::User, "second"),
         ];
-        let p = ChatTemplate::Gemma4It.format_prompt_chat("SYS", &pieces);
+        let p = ChatTemplate::Gemma4It.format_prompt_chat("SYS", &pieces, false);
         assert!(p.contains("first<turn|>"));
         assert!(p.contains("<|channel>thought\n<channel|>reply<turn|>"));
         assert!(p.contains("<|turn>user\nsecond<turn|>"));
@@ -563,7 +666,7 @@ mod llama_chat_template_tests {
     fn qwen_reasoning_chat_ends_with_open_assistant() {
         let t = ChatTemplate::QwenChatMlReasoning;
         let pieces = [(ChatPieceRole::User, "hi")];
-        let p = t.format_prompt_chat("SYS", &pieces);
+        let p = t.format_prompt_chat("SYS", &pieces, true);
         assert!(p.ends_with("assistant\n"));
         const THINK_CLOSE: &str = concat!("</", "think", ">");
         assert!(!p.contains(THINK_CLOSE));
@@ -577,7 +680,7 @@ mod llama_chat_template_tests {
             (ChatPieceRole::Assistant, "hello"),
             (ChatPieceRole::User, "next"),
         ];
-        let p = t.format_prompt_chat("SYS", &pieces);
+        let p = t.format_prompt_chat("SYS", &pieces, false);
         assert!(p.contains("system"));
         assert!(p.contains("SYS"));
         let u1 = p.match_indices("user").count();
@@ -591,7 +694,7 @@ mod llama_chat_template_tests {
     fn qwen_chatml_chat_ends_with_assistant_start() {
         let t = ChatTemplate::QwenChatMl;
         let pieces = [(ChatPieceRole::User, "hallo")];
-        let p = t.format_prompt_chat("Be nice", &pieces);
+        let p = t.format_prompt_chat("Be nice", &pieces, false);
         assert!(p.contains("system"));
         assert!(p.contains("Be nice"));
         assert!(p.contains("user"));
@@ -602,7 +705,7 @@ mod llama_chat_template_tests {
 
     #[test]
     fn phi4_instruct_single_turn_wraps_roles() {
-        let p = ChatTemplate::Phi4Instruct.format_prompt("SYS", "hello");
+        let p = ChatTemplate::Phi4Instruct.format_prompt("SYS", "hello", false);
         assert_eq!(p, "<|system|>SYS<|end|><|user|>hello<|end|><|assistant|>");
     }
 
@@ -613,7 +716,7 @@ mod llama_chat_template_tests {
             (ChatPieceRole::Assistant, "hello"),
             (ChatPieceRole::User, "next"),
         ];
-        let p = ChatTemplate::Phi4Instruct.format_prompt_chat("SYS", &pieces);
+        let p = ChatTemplate::Phi4Instruct.format_prompt_chat("SYS", &pieces, false);
         assert!(p.starts_with("<|system|>SYS<|end|>"));
         assert!(p.contains("<|user|>hi<|end|>"));
         assert!(p.contains("<|assistant|>hello<|end|>"));
@@ -622,7 +725,7 @@ mod llama_chat_template_tests {
 
     #[test]
     fn hunyuan_dense_single_turn_wraps_system_and_user() {
-        let p = ChatTemplate::HunyuanDense.format_prompt("SYS", "hello");
+        let p = ChatTemplate::HunyuanDense.format_prompt("SYS", "hello", false);
         assert_eq!(p, "<|startoftext|>SYS<|extra_4|>hello<|extra_0|>");
     }
 
@@ -633,7 +736,7 @@ mod llama_chat_template_tests {
             (ChatPieceRole::Assistant, "reply"),
             (ChatPieceRole::User, "second"),
         ];
-        let p = ChatTemplate::HunyuanDense.format_prompt_chat("SYS", &pieces);
+        let p = ChatTemplate::HunyuanDense.format_prompt_chat("SYS", &pieces, false);
         assert!(p.starts_with("<|startoftext|>SYS<|extra_4|>"));
         assert!(p.contains("first<|extra_0|>"));
         assert!(p.contains("reply<|eos|>"));
@@ -642,7 +745,7 @@ mod llama_chat_template_tests {
 
     #[test]
     fn glm4_instruct_single_turn_uses_gmask_and_role_tokens() {
-        let p = ChatTemplate::Glm4Instruct.format_prompt("SYS", "hello");
+        let p = ChatTemplate::Glm4Instruct.format_prompt("SYS", "hello", false);
         assert_eq!(p, "[gMASK]<sop><|system|>SYS<|user|>hello<|assistant|>");
     }
 
@@ -653,7 +756,7 @@ mod llama_chat_template_tests {
             (ChatPieceRole::Assistant, "reply"),
             (ChatPieceRole::User, "second"),
         ];
-        let p = ChatTemplate::Glm4Instruct.format_prompt_chat("SYS", &pieces);
+        let p = ChatTemplate::Glm4Instruct.format_prompt_chat("SYS", &pieces, false);
         assert!(p.starts_with("[gMASK]<sop><|system|>SYS"));
         assert!(p.contains("<|user|>first"));
         assert!(p.contains("<|assistant|>reply"));
@@ -663,7 +766,7 @@ mod llama_chat_template_tests {
 
     #[test]
     fn glm47_flash_single_turn_appends_nothink() {
-        let p = ChatTemplate::Glm47Flash.format_prompt("SYS", "hello");
+        let p = ChatTemplate::Glm47Flash.format_prompt("SYS", "hello", false);
         assert_eq!(
             p,
             "[gMASK]<sop><|system|>SYS<|user|>hello/nothink<|assistant|>"
@@ -671,14 +774,34 @@ mod llama_chat_template_tests {
     }
 
     #[test]
+    fn glm47_flash_thinking_on_omits_nothink_without_forcing_think_open() {
+        let p = ChatTemplate::Glm47Flash.format_prompt("SYS", "hello", true);
+        assert_eq!(p, "[gMASK]<sop><|system|>SYS<|user|>hello<|assistant|>");
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        assert!(!p.contains(THINK_OPEN), "{p}");
+    }
+
+    #[test]
+    fn resolve_enable_thinking_keeps_reasoning_templates_on() {
+        assert!(ChatTemplate::QwenChatMlReasoning.resolve_enable_thinking(false));
+        assert!(ChatTemplate::Glm4Z1Reasoning.resolve_enable_thinking(false));
+        assert!(!ChatTemplate::QwenChatMl.resolve_enable_thinking(false));
+        assert!(ChatTemplate::QwenChatMl.resolve_enable_thinking(true));
+        assert!(ChatTemplate::Gemma4It.resolve_enable_thinking(true));
+        assert!(ChatTemplate::Glm47Flash.resolve_enable_thinking(true));
+        assert!(!ChatTemplate::Glm4Instruct.resolve_enable_thinking(true));
+        assert!(!ChatTemplate::Phi4Instruct.resolve_enable_thinking(true));
+    }
+
+    #[test]
     fn glm47_flash_chat_appends_nothink_and_closes_thinking_in_history() {
-        const THINK_CLOSE: &str = concat!("</", "redacted_thinking", ">");
+        const THINK_CLOSE: &str = concat!("</", "think", ">");
         let pieces = [
             (ChatPieceRole::User, "first"),
             (ChatPieceRole::Assistant, "reply"),
             (ChatPieceRole::User, "second"),
         ];
-        let p = ChatTemplate::Glm47Flash.format_prompt_chat("SYS", &pieces);
+        let p = ChatTemplate::Glm47Flash.format_prompt_chat("SYS", &pieces, false);
         assert!(p.contains("<|user|>first/nothink"));
         assert!(p.contains(&format!("<|assistant|>{THINK_CLOSE}reply")));
         assert!(p.contains("<|user|>second/nothink"));
@@ -686,9 +809,9 @@ mod llama_chat_template_tests {
     }
 
     #[test]
-    fn glm4_z1_single_turn_opens_redacted_thinking() {
-        const THINK_OPEN: &str = concat!("<", "redacted_thinking", ">");
-        let p = ChatTemplate::Glm4Z1Reasoning.format_prompt("SYS", "hello");
+    fn glm4_z1_single_turn_opens_thinking() {
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        let p = ChatTemplate::Glm4Z1Reasoning.format_prompt("SYS", "hello", true);
         assert_eq!(
             p,
             format!("[gMASK]<sop><|system|>SYS<|user|>hello<|assistant|>{THINK_OPEN}")
@@ -696,10 +819,47 @@ mod llama_chat_template_tests {
     }
 
     #[test]
+    fn glm4_z1_still_opens_thinking_when_setting_is_false() {
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        let p = ChatTemplate::Glm4Z1Reasoning.format_prompt("SYS", "hello", false);
+        assert_eq!(
+            p,
+            format!("[gMASK]<sop><|system|>SYS<|user|>hello<|assistant|>{THINK_OPEN}")
+        );
+    }
+
+    #[test]
+    fn glm47_flash_chat_thinking_on_omits_nothink() {
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::Glm47Flash.format_prompt_chat("SYS", &pieces, true);
+        assert!(p.contains("<|user|>first"));
+        assert!(!p.contains("/nothink"), "{p}");
+        assert!(p.contains("<|assistant|>reply"));
+        assert!(p.ends_with("<|assistant|>"));
+    }
+
+    #[test]
+    fn gemma4_it_chat_thinking_on_opens_thought_without_closing() {
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::Gemma4It.format_prompt_chat("SYS", &pieces, true);
+        assert!(p.contains("<|turn>model\nreply<turn|>"));
+        assert!(p.ends_with("<|channel>thought\n"));
+        assert!(!p.ends_with("<channel|>"));
+    }
+
+    #[test]
     fn glm4_z1_chat_ends_with_thinking_prefix() {
-        const THINK_OPEN: &str = concat!("<", "redacted_thinking", ">");
+        const THINK_OPEN: &str = concat!("<", "think", ">");
         let pieces = [(ChatPieceRole::User, "hi")];
-        let p = ChatTemplate::Glm4Z1Reasoning.format_prompt_chat("SYS", &pieces);
+        let p = ChatTemplate::Glm4Z1Reasoning.format_prompt_chat("SYS", &pieces, false);
         assert!(p.ends_with(&format!("<|assistant|>{THINK_OPEN}")));
     }
 

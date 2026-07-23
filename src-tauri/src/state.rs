@@ -26,6 +26,10 @@ pub(crate) struct PersistedSettings {
     pub(crate) guardrails_enabled: bool,
     #[serde(default)]
     pub(crate) guardrails_custom_text: Option<String>,
+    /// When true, Qwen / Gemma 4 / GLM-4.7 Flash prompts allow chain-of-thought; default is polished copy (off).
+    /// DeepSeek-R1 / GLM-Z1 templates keep thinking on regardless of this flag.
+    #[serde(default)]
+    pub(crate) enable_model_thinking: bool,
 }
 
 impl Default for PersistedSettings {
@@ -35,6 +39,7 @@ impl Default for PersistedSettings {
             mode_model_ids: HashMap::new(),
             guardrails_enabled: true,
             guardrails_custom_text: None,
+            enable_model_thinking: false,
         }
     }
 }
@@ -121,6 +126,22 @@ impl AppState {
         s.guardrails_enabled = true;
         s.guardrails_custom_text = custom_text;
         drop(s);
+        self.persist(app)
+    }
+
+    pub(crate) fn enable_model_thinking(&self) -> bool {
+        self.settings.lock().enable_model_thinking
+    }
+
+    pub(crate) fn set_enable_model_thinking(
+        &self,
+        app: &tauri::AppHandle,
+        enabled: bool,
+    ) -> MagunaResult<()> {
+        self.settings.lock().enable_model_thinking = enabled;
+        // Prompt framing changes; drop Chat KV so the next turn is not mixed with the old prefix.
+        #[cfg(feature = "llama")]
+        self.invalidate_chat_kv();
         self.persist(app)
     }
 
@@ -259,6 +280,7 @@ mod persist_tests {
         );
         assert!(!back.guardrails_enabled);
         assert_eq!(back.guardrails_custom_text.as_deref(), Some("x"));
+        assert!(!back.enable_model_thinking);
     }
 
     #[test]
@@ -268,6 +290,7 @@ mod persist_tests {
         assert!(s.mode_model_ids.is_empty());
         assert!(s.guardrails_enabled);
         assert!(s.guardrails_custom_text.is_none());
+        assert!(!s.enable_model_thinking);
     }
 
     #[test]
@@ -277,12 +300,14 @@ mod persist_tests {
         assert!(s.mode_model_ids.is_empty());
         assert!(s.guardrails_enabled);
         assert!(s.guardrails_custom_text.is_none());
+        assert!(!s.enable_model_thinking);
         let out = serde_json::to_string(&s).unwrap();
         let back: PersistedSettings = serde_json::from_str(&out).unwrap();
         assert!(back.active_model_id.is_none());
         assert!(back.mode_model_ids.is_empty());
         assert!(back.guardrails_enabled);
         assert!(back.guardrails_custom_text.is_none());
+        assert!(!back.enable_model_thinking);
     }
 
     #[test]
@@ -291,5 +316,17 @@ mod persist_tests {
         let s: PersistedSettings = serde_json::from_str(j).unwrap();
         assert!(s.guardrails_enabled);
         assert!(s.guardrails_custom_text.is_none());
+        assert!(!s.enable_model_thinking);
+    }
+
+    #[test]
+    fn persisted_settings_enable_model_thinking_roundtrip() {
+        let json = r#"{"enable_model_thinking":true}"#;
+        let s: PersistedSettings = serde_json::from_str(json).unwrap();
+        assert!(s.enable_model_thinking);
+        let out = serde_json::to_string(&s).unwrap();
+        assert!(out.contains("enable_model_thinking"));
+        let back: PersistedSettings = serde_json::from_str(&out).unwrap();
+        assert!(back.enable_model_thinking);
     }
 }

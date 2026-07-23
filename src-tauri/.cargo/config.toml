@@ -1,6 +1,9 @@
 # llama-cpp-sys-4 (C++17 std::filesystem) requires macOS 10.15+ at link time.
+# `force = true` is required: `tauri build` sets MACOSX_DEPLOYMENT_TARGET from
+# bundle.macOS.minimumSystemVersion (default 10.13), and Cargo [env] does not
+# override existing variables unless forced.
 [env]
-MACOSX_DEPLOYMENT_TARGET = "10.15"
-CMAKE_OSX_DEPLOYMENT_TARGET = "10.15"
-CXXFLAGS = "-mmacosx-version-min=10.15"
-CFLAGS = "-mmacosx-version-min=10.15"
+MACOSX_DEPLOYMENT_TARGET = { value = "10.15", force = true }
+CMAKE_OSX_DEPLOYMENT_TARGET = { value = "10.15", force = true }
+CXXFLAGS = { value = "-mmacosx-version-min=10.15", force = true }
+CFLAGS = { value = "-mmacosx-version-min=10.15", force = true }

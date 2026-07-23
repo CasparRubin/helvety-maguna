@@ -65,6 +65,11 @@ export type GuardrailsSettings = {
   builtInPolicyText: string;
 };
 
+/** Matches Rust `ModelThinkingSettingsDto` — when enabled, allows CoT for Qwen / Gemma 4 / GLM-4.7 Flash (DeepSeek-R1 / GLM-Z1 always reason). */
+export type ModelThinkingSettings = {
+  enabled: boolean;
+};
+
 export type ModeDefinition = {
   id: string;
   name: string;

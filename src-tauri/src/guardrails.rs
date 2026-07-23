@@ -46,6 +46,7 @@ mod tests {
             mode_model_ids: HashMap::new(),
             guardrails_enabled: enabled,
             guardrails_custom_text: custom.map(String::from),
+            enable_model_thinking: false,
         }
     }
 
