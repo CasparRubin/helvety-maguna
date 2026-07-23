@@ -235,12 +235,19 @@ describe("ModePage", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Hello from the model")).toBeInTheDocument();
+      const bubble = chatAssistantBubble();
+      expect(bubble?.textContent).toMatch(/Hello from the model/);
     });
     expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
 
     const bubble = chatAssistantBubble();
     expect(bubble).toBeTruthy();
+    // Chat bodies use Streamdown (<p>), not monospace <pre>.
+    expect((bubble as HTMLElement).querySelector("pre")).toBeNull();
+    const bodyParas = [...(bubble as HTMLElement).querySelectorAll("p")].map(
+      (p) => p.textContent,
+    );
+    expect(bodyParas.some((t) => t?.includes("Hello from the model"))).toBe(true);
     const copy = within(bubble as HTMLElement).getByRole("button", {
       name: /copy to clipboard/i,
     });
@@ -249,6 +256,56 @@ describe("ModePage", () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("Hello from the model");
     });
+  });
+
+  it("renders streamed markdown in chat bubbles via Streamdown", async () => {
+    const modeId = "vitest-chat-markdown-stream";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Chat markdown stream",
+        system_prompt: "",
+        prompt_layout: "chat",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    vi.mocked(tauriApi.invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_installed_models") return [];
+      if (cmd === "get_mode_model_binding") {
+        return { effective_model_id: "model-1", override_model_id: null };
+      }
+      if (cmd === "run_mode_chat") return new Promise(() => {});
+      if (cmd === "reset_chat_kv") return undefined;
+      if (cmd === "get_model_thinking_settings") return { enabled: false };
+      if (cmd === "set_model_thinking_settings") return undefined;
+      throw new Error(`unhandled invoke in test: ${cmd}`);
+    });
+
+    renderAtMode(`/mode/${modeId}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: /paste and run/i }));
+
+    await waitFor(() => {
+      expect(inferenceHandlers.current).not.toBeNull();
+    });
+
+    act(() => {
+      inferenceHandlers.current!.onChunk("## Streamed title\n\nBody line");
+    });
+
+    const bubble = await waitFor(() => {
+      const el = chatAssistantBubble();
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    });
+
+    expect(
+      within(bubble).getByRole("heading", { level: 2, name: "Streamed title" }),
+    ).toBeInTheDocument();
+    expect(bubble.querySelector("pre")).toBeNull();
+    expect(bubble.textContent).toMatch(/Body line/);
   });
 
   it("Send in chat invokes run_mode_chat with composer text", async () => {
@@ -746,7 +803,10 @@ describe("ModePage", () => {
         title: "Prior thread",
         messages: [
           { role: "user", content: "earlier question" },
-          { role: "assistant", content: "earlier answer" },
+          {
+            role: "assistant",
+            content: "## earlier answer\n\nLine one\nLine two",
+          },
         ],
       },
     ]);
@@ -758,9 +818,20 @@ describe("ModePage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("earlier question")).toBeInTheDocument();
-      expect(screen.getByText("earlier answer")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { level: 2, name: "earlier answer" }),
+      ).toBeInTheDocument();
       expect(screen.getByText(/• open/i)).toBeInTheDocument();
     });
+    const assistantBubble = screen
+      .getByRole("heading", { level: 2, name: "earlier answer" })
+      .closest(".rounded-lg");
+    expect(assistantBubble).toBeTruthy();
+    expect((assistantBubble as HTMLElement).querySelector("pre")).toBeNull();
+    const bodyParas = [...(assistantBubble as HTMLElement).querySelectorAll("p")].map(
+      (p) => p.textContent,
+    );
+    expect(bodyParas).toContain("Line one\nLine two");
     expect(screen.queryByText(/no messages yet/i)).not.toBeInTheDocument();
     expect(tauriApi.invoke).toHaveBeenCalledWith("reset_chat_kv");
   });

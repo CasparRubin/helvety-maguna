@@ -76,6 +76,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { AiOutputDisclaimer } from "@/components/ai-output-disclaimer";
+import { ChatMarkdown } from "@/components/chat-markdown";
 import { CopyTextControl } from "@/components/copy-text-control";
 import { cn } from "@/lib/utils";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -1131,11 +1132,9 @@ export function ModePage() {
                   ) : (
                     chatMessages.map((m, i) => {
                       const hasContent = m.content.trim() !== "";
-                      const isThinking =
-                        m.role === "assistant" &&
-                        busy &&
-                        i === chatMessages.length - 1 &&
-                        !hasContent;
+                      const isStreamingBubble =
+                        m.role === "assistant" && busy && i === chatMessages.length - 1;
+                      const isThinking = isStreamingBubble && !hasContent;
 
                       return (
                         <div
@@ -1158,15 +1157,17 @@ export function ModePage() {
                             <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                               {m.role === "user" ? "You" : "Maguna"}
                             </p>
-                            <pre className="max-h-[40vh] overflow-y-auto whitespace-pre-wrap break-words font-mono text-sm">
-                              {hasContent ? (
-                                m.content
-                              ) : isThinking ? (
+                            {hasContent ? (
+                              <ChatMarkdown isAnimating={isStreamingBubble}>
+                                {m.content}
+                              </ChatMarkdown>
+                            ) : isThinking ? (
+                              <p className="text-sm">
                                 <span className="maguna-label-thinking">
                                   Thinking...
                                 </span>
-                              ) : null}
-                            </pre>
+                              </p>
+                            ) : null}
                           </div>
                         </div>
                       );
