@@ -805,8 +805,8 @@ export function ModePage() {
             aria-pressed={enableModelThinking}
             title={
               enableModelThinking
-                ? "Thinking on for Qwen / Gemma 4 / GLM-4.7 — chain-of-thought may appear (slower). DeepSeek-R1 / GLM-Z1 always reason."
-                : "Thinking off for Qwen / Gemma 4 / GLM-4.7 — polished answers. DeepSeek-R1 / GLM-Z1 still show reasoning."
+                ? "Thinking on for Qwen / Gemma 4 / GLM-4.7 — chain-of-thought prose may appear (slower; control tags stripped). DeepSeek-R1 / GLM-Z1 always reason."
+                : "Thinking off for Qwen / Gemma 4 / GLM-4.7 — polished answers (reasoning content hidden). DeepSeek-R1 / GLM-Z1 still show reasoning prose."
             }
             onClick={() => void toggleModelThinking()}
           >

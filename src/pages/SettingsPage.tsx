@@ -239,8 +239,9 @@ export function SettingsPage() {
           <CardDescription>
             When off (default), Maguna asks Qwen, Gemma 4, and GLM-4.7 for polished
             answers without a visible chain-of-thought—faster on laptops. Turn on to let
-            those models reason step by step (slower; traces stay in the reply).
-            DeepSeek-R1 and GLM-Z1 keep reasoning on either way.
+            those models reason step by step (slower; reasoning prose stays in the
+            reply, without raw think/channel markup). DeepSeek-R1 and GLM-Z1 keep
+            reasoning prose on either way.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -14,7 +14,10 @@ const TRUNCATE_MARKERS = [
   IM_USER,
   IM_ASSISTANT,
   IM_MIDDLE,
+  "<|begin_of_text|>",
   "<|eot_id|>",
+  "<|end_header_id|>",
+  "<|start_header_id|>",
   "<|user|>",
   "<|system|>",
   "<|assistant|>",
@@ -25,8 +28,9 @@ const TRUNCATE_MARKERS = [
   "<|extra_4|>",
   "<|eos|>",
   "</s>",
+  "<s>",
+  "[INST]",
   "[/INST]",
-  "<|start_header_id|>",
   "<start_of_turn>",
   "<end_of_turn>",
   "<|turn>",
@@ -47,10 +51,19 @@ const TRUNCATE_MARKERS = [
   "/nothink",
 ];
 
+/** Role / framing tokens — always truncate even when reasoning text is kept. */
+const ROLE_TRUNCATE_MARKERS = TRUNCATE_MARKERS.filter(
+  (m) => m !== THINK_OPEN && m !== THINK_CLOSE && !m.includes("channel"),
+);
+
 const CHANNEL_FINAL = /<\|?channel\|?>final\s*/i;
 const CHANNEL_THOUGHT_PREFIX = /^\s*<\|?channel\|?>thought[^\n]*\n?/i;
 const CHANNEL_LEADER = /^<\|?channel\|?>\s*/i;
 const CHANNEL_THOUGHT_START = /^\s*<\|?channel\|?>thought\b/i;
+/** Named channel headers (thought / analysis / final); keep surrounding prose. */
+const CHANNEL_NAMED = /<\|?channel\|?>(?:thought|analysis|final)\b[^\n]*\n?/gi;
+/** Bare channel closers (`<channel|>`, `<|channel|>`); tag only, not the rest of the line. */
+const CHANNEL_BARE = /<\|?channel\|?>/gi;
 
 const THINK_BLOCK = new RegExp(`${THINK_OPEN}[\\s\\S]*?${THINK_CLOSE}`, "g");
 
@@ -64,14 +77,29 @@ function stripThinkBlocks(text: string): string {
   return s;
 }
 
+/**
+ * Remove think/channel markup while keeping reasoning and answer prose.
+ * Used when Thinking is on (or DeepSeek-R1 / GLM-Z1).
+ */
+function unwrapReasoningTags(text: string): string {
+  return text
+    .split(THINK_OPEN)
+    .join("")
+    .split(THINK_CLOSE)
+    .join("")
+    .replace(CHANNEL_NAMED, "")
+    .replace(CHANNEL_BARE, "");
+}
+
 export type StripChatArtifactsOptions = {
   /**
-   * Keep reasoning traces visible (Settings Thinking on, or DeepSeek-R1 / GLM-Z1 models).
+   * Keep reasoning *text* visible (Settings Thinking on, or DeepSeek-R1 / GLM-Z1 models).
+   * Structural tags are still removed.
    */
   preserveReasoning?: boolean;
 };
 
-/** Models that should show chain-of-thought in the UI instead of stripping it. */
+/** Models that keep chain-of-thought *prose* visible (markup tags are still stripped). */
 export function modelPreservesReasoningTrace(
   modelId: string | null | undefined,
 ): boolean {
@@ -85,7 +113,10 @@ export function modelPreservesReasoningTrace(
   );
 }
 
-/** Keep CoT visible when the Settings toggle is on or the loaded model is a reasoning import. */
+/**
+ * Keep CoT prose visible when the Settings toggle is on or the loaded model is a
+ * reasoning import. Structural think/channel tags are still removed either way.
+ */
 export function shouldPreserveReasoningTrace(
   modelId: string | null | undefined,
   enableModelThinking: boolean,
@@ -111,15 +142,29 @@ function stripChannelReasoning(text: string): string {
   if (CHANNEL_THOUGHT_START.test(text)) {
     return "";
   }
+  // Bare channel closer at start (thinking-off echo without a thought line).
+  if (CHANNEL_LEADER.test(text)) {
+    return text.replace(CHANNEL_LEADER, "");
+  }
   return text;
 }
 
+function truncateAtMarkers(text: string, markers: readonly string[]): string {
+  let end = text.length;
+  for (const m of markers) {
+    const i = text.indexOf(m);
+    if (i !== -1 && i < end) end = i;
+  }
+  return text.slice(0, end);
+}
+
 /**
- * Trim model control tokens, reasoning traces, and chat framing echoes from streamed text.
- * Maguna targets polished copy by default — thinking is off in Qwen/Gemma/GLM-4.7 prompts
- * (empty think / `/nothink`) unless Settings / the mode-page Thinking toggle is on; control
- * tokens are stripped as a safety net. When thinking is on (or the model is DeepSeek-R1 /
- * GLM-Z1), pass `preserveReasoning: true` so traces stay visible.
+ * Trim model control/framing tokens from streamed text. By default also discards
+ * reasoning *content* (thinking off). Maguna defaults to thinking off in
+ * Qwen/Gemma/GLM-4.7 prompts (empty think / `/nothink`) unless Settings / the
+ * mode-page Thinking toggle is on. When thinking is on (or the model is
+ * DeepSeek-R1 / GLM-Z1), pass `preserveReasoning: true` so reasoning prose stays
+ * visible; think/channel markup and role tokens are still removed either way.
  */
 export function stripChatArtifacts(
   text: string,
@@ -128,31 +173,23 @@ export function stripChatArtifacts(
   let s = text;
   const preserveReasoning = options.preserveReasoning === true;
 
-  if (!preserveReasoning) {
+  if (preserveReasoning) {
+    s = unwrapReasoningTags(s);
+    s = truncateAtMarkers(s, ROLE_TRUNCATE_MARKERS);
+  } else {
     const thinkCloseIdx = s.lastIndexOf(THINK_CLOSE);
     if (thinkCloseIdx !== -1) {
       s = s.slice(thinkCloseIdx + THINK_CLOSE.length);
     }
     s = stripThinkBlocks(s);
     s = stripChannelReasoning(s);
+    s = truncateAtMarkers(s, TRUNCATE_MARKERS);
   }
-
-  let end = s.length;
-  const markers = preserveReasoning
-    ? TRUNCATE_MARKERS.filter(
-        (m) => m !== THINK_OPEN && m !== THINK_CLOSE && !m.includes("channel"),
-      )
-    : TRUNCATE_MARKERS;
-  for (const m of markers) {
-    const i = s.indexOf(m);
-    if (i !== -1 && i < end) end = i;
-  }
-  s = s.slice(0, end);
 
   return s.trim();
 }
 
-/** Visible streaming text — same rules as the final pass so Chat does not flash reasoning tokens. */
+/** Visible streaming text — same rules as the final pass so Chat does not flash control markup. */
 export function visibleInferenceOutput(
   text: string,
   options: StripChatArtifactsOptions = {},
