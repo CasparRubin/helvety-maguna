@@ -713,13 +713,14 @@ fn spawn_llama_stream_prompt(
     reuse_kv: bool,
     sampler_profile: inference::SamplerProfile,
 ) -> Result<(), String> {
+    state.stop_infer_thread();
     state.reset_cancel();
     let (model, _) = state.loaded_for_inference().map_err(|e| e.to_string())?;
     let backend = Arc::clone(&state.llama_backend);
     let cancel = state.cancel_infer.clone();
     let chat_kv = Arc::clone(&state.chat_kv);
     let app_h = app.clone();
-    std::thread::spawn(move || {
+    let handle = std::thread::spawn(move || {
         if let Err(e) = inference::stream_chat_completion(
             &app_h,
             backend.as_ref(),
@@ -735,6 +736,7 @@ fn spawn_llama_stream_prompt(
             let _ = app_h.emit("inference-error", e);
         }
     });
+    state.set_infer_thread(handle);
     Ok(())
 }
 
@@ -822,13 +824,14 @@ pub async fn run_mode_chat(
                         .to_string()
                 })?;
             state.invalidate_chat_kv();
+            state.stop_infer_thread();
             state.reset_cancel();
             let (model, _) = state.loaded_for_inference().map_err(|e| e.to_string())?;
             let backend = Arc::clone(&state.llama_backend);
             let cancel = state.cancel_infer.clone();
             let app_h = app.clone();
             let image_path = std::path::PathBuf::from(image);
-            std::thread::spawn(move || {
+            let handle = std::thread::spawn(move || {
                 if let Err(e) = inference::stream_completion_with_image(
                     &app_h,
                     backend.as_ref(),
@@ -843,6 +846,7 @@ pub async fn run_mode_chat(
                     let _ = app_h.emit("inference-error", e);
                 }
             });
+            state.set_infer_thread(handle);
             return Ok(());
         }
 

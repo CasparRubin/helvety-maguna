@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+#[cfg(feature = "llama")]
+use std::thread::JoinHandle;
 
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
@@ -80,9 +82,14 @@ pub struct AppState {
     pub llama_backend: Arc<llama_cpp_4::llama_backend::LlamaBackend>,
     #[cfg(feature = "llama")]
     pub loaded: Mutex<Option<(String, ChatTemplate, Arc<llama_cpp_4::model::LlamaModel>)>>,
-    /// Multi-turn Chat KV reuse; invalidated on model unload, New chat, or cancel.
+    /// Multi-turn Chat KV reuse. Cleared on model unload, New chat / `reset_chat_kv`,
+    /// Thinking toggle, and when a generation stops early (Cancel / Escape).
     #[cfg(feature = "llama")]
     pub chat_kv: Arc<Mutex<Option<crate::inference::ChatKvSession>>>,
+    /// In-flight decode worker; joined on unload/quit so Metal buffers drop before
+    /// Tauri's `process::exit` (which skips Rust `Drop`).
+    #[cfg(feature = "llama")]
+    infer_thread: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl AppState {
@@ -102,6 +109,8 @@ impl AppState {
             loaded: Mutex::new(None),
             #[cfg(feature = "llama")]
             chat_kv: Arc::new(Mutex::new(None)),
+            #[cfg(feature = "llama")]
+            infer_thread: Mutex::new(None),
         }
     }
 
@@ -210,6 +219,33 @@ impl AppState {
         self.cancel_infer.store(true, Ordering::SeqCst);
     }
 
+    /// Cancel decode and join the worker so it releases model/`chat_kv` Arcs.
+    #[cfg(feature = "llama")]
+    pub fn stop_infer_thread(&self) {
+        self.cancel_generation();
+        let handle = self.infer_thread.lock().take();
+        if let Some(handle) = handle {
+            if let Err(e) = handle.join() {
+                tracing::warn!("inference thread panicked: {e:?}");
+            }
+        }
+    }
+
+    #[cfg(feature = "llama")]
+    pub fn set_infer_thread(&self, handle: JoinHandle<()>) {
+        // Prefer `stop_infer_thread` before spawn; still join any leftover handle so
+        // Dock Quit cannot orphan a worker that still holds Metal buffers.
+        let prev = self.infer_thread.lock().replace(handle);
+        if let Some(prev) = prev {
+            if !prev.is_finished() {
+                tracing::warn!("joining leftover inference thread after replace");
+            }
+            if let Err(e) = prev.join() {
+                tracing::warn!("previous inference thread panicked: {e:?}");
+            }
+        }
+    }
+
     #[cfg(feature = "llama")]
     pub fn invalidate_chat_kv(&self) {
         *self.chat_kv.lock() = None;
@@ -217,8 +253,19 @@ impl AppState {
 
     #[cfg(feature = "llama")]
     pub fn unload_model(&self) {
+        // Stop decode before dropping weights; a worker Arc would otherwise keep
+        // Metal buffers alive through Dock Quit's `process::exit` (ggml then aborts
+        // in `rsets_free`). Same join is required before model switch/delete.
+        self.stop_infer_thread();
         self.invalidate_chat_kv();
         *self.loaded.lock() = None;
+    }
+
+    /// Unload before Tauri's `process::exit` so ggml's Metal static destructor
+    /// sees empty residency sets (see `examples/metal_quit_smoke.rs`).
+    #[cfg(feature = "llama")]
+    pub fn prepare_for_exit(&self) {
+        self.unload_model();
     }
 
     #[cfg(feature = "llama")]
@@ -329,5 +376,99 @@ mod persist_tests {
         assert!(out.contains("enable_model_thinking"));
         let back: PersistedSettings = serde_json::from_str(&out).unwrap();
         assert!(back.enable_model_thinking);
+    }
+}
+
+/// Quit / unload must join the decode worker before dropping weights so Metal
+/// residency sets are empty when ggml's process-static destructor runs.
+#[cfg(all(test, feature = "llama"))]
+mod infer_lifecycle_tests {
+    use super::*;
+    use std::sync::OnceLock;
+    use std::time::{Duration, Instant};
+
+    fn shared_backend() -> Arc<llama_cpp_4::llama_backend::LlamaBackend> {
+        static BACKEND: OnceLock<Arc<llama_cpp_4::llama_backend::LlamaBackend>> = OnceLock::new();
+        Arc::clone(BACKEND.get_or_init(|| {
+            Arc::new(
+                llama_cpp_4::llama_backend::LlamaBackend::init()
+                    .expect("llama.cpp backend init failed in test"),
+            )
+        }))
+    }
+
+    fn harness() -> AppState {
+        AppState {
+            cancel_infer: Arc::new(AtomicBool::new(false)),
+            settings: Mutex::new(PersistedSettings::default()),
+            llama_backend: shared_backend(),
+            loaded: Mutex::new(None),
+            chat_kv: Arc::new(Mutex::new(None)),
+            infer_thread: Mutex::new(None),
+        }
+    }
+
+    fn spawn_cancel_loop(state: &AppState) -> Arc<AtomicBool> {
+        let started = Arc::new(AtomicBool::new(false));
+        let started_flag = Arc::clone(&started);
+        let cancel = Arc::clone(&state.cancel_infer);
+        state.set_infer_thread(std::thread::spawn(move || {
+            started_flag.store(true, Ordering::SeqCst);
+            while !cancel.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }));
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while !started.load(Ordering::SeqCst) {
+            assert!(
+                Instant::now() < deadline,
+                "inference test worker never started"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        started
+    }
+
+    #[test]
+    fn stop_infer_thread_cancels_and_clears_handle() {
+        let state = harness();
+        spawn_cancel_loop(&state);
+        state.stop_infer_thread();
+        assert!(state.cancel_infer.load(Ordering::SeqCst));
+        assert!(state.infer_thread.lock().is_none());
+    }
+
+    #[test]
+    fn prepare_for_exit_joins_worker_like_unload() {
+        let state = harness();
+        spawn_cancel_loop(&state);
+        state.prepare_for_exit();
+        assert!(state.cancel_infer.load(Ordering::SeqCst));
+        assert!(state.infer_thread.lock().is_none());
+        assert!(state.loaded.lock().is_none());
+    }
+
+    #[test]
+    fn set_infer_thread_joins_finished_previous() {
+        let state = harness();
+        state.set_infer_thread(std::thread::spawn(|| {}));
+        // Give the first worker a moment to finish so replace joins a completed handle.
+        std::thread::sleep(Duration::from_millis(20));
+        state.set_infer_thread(std::thread::spawn(|| {}));
+        state.stop_infer_thread();
+        assert!(state.infer_thread.lock().is_none());
+    }
+
+    #[test]
+    fn stop_before_spawn_then_set_does_not_orphan() {
+        let state = harness();
+        spawn_cancel_loop(&state);
+        // Mirrors spawn_llama_stream_prompt: stop → reset → set new worker.
+        state.stop_infer_thread();
+        state.reset_cancel();
+        assert!(!state.cancel_infer.load(Ordering::SeqCst));
+        spawn_cancel_loop(&state);
+        state.prepare_for_exit();
+        assert!(state.infer_thread.lock().is_none());
     }
 }

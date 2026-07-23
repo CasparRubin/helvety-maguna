@@ -38,6 +38,22 @@ cd src-tauri && cargo run --example spike_load --features llama -- \
 
 Prefer the user's canonical **`maguna/models`** path from step 1 over legacy `target/*/Models` copies.
 
+## metal_quit_smoke (macOS Metal quit abort)
+
+Tauri Dock Quit uses `process::exit` (skips Rust `Drop`). Maguna unloads on `ExitRequested`; this example checks the Metal residency teardown without the UI.
+
+```bash
+cd src-tauri && cargo run --example metal_quit_smoke --features llama -- \
+  "/absolute/path/to/model.gguf" drop
+# expect exit 0 — unload-before-exit path
+
+cd src-tauri && cargo run --example metal_quit_smoke --features llama -- \
+  "/absolute/path/to/model.gguf" leak
+# expect SIGABRT / 134 on macOS 15+ — reproduces the Dock Quit abort
+```
+
+Use an existing installed GGUF from step 1. **Do not download** a model just for this check.
+
 ## Cleanup
 
 If you ever downloaded weights for an experiment, **delete those files** when done. Do not leave multi‑GB duplicates outside the user's managed `maguna/models` store.

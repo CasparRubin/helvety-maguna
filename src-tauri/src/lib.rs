@@ -11,7 +11,7 @@ mod prompts;
 mod state;
 mod storage;
 
-use tauri::Manager;
+use tauri::{Manager, RunEvent};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::state::AppState;
@@ -83,6 +83,18 @@ pub fn run() {
             commands::get_model_thinking_settings,
             commands::set_model_thinking_settings,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                #[cfg(feature = "llama")]
+                {
+                    app.state::<AppState>().prepare_for_exit();
+                }
+                #[cfg(not(feature = "llama"))]
+                {
+                    let _ = app;
+                }
+            }
+        });
 }

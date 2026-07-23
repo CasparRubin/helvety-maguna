@@ -49,3 +49,8 @@ tauri-plugin-dialog = "2"
 name = "spike_load"
 path = "examples/spike_load.rs"
 required-features = ["llama"]
+
+[[example]]
+name = "metal_quit_smoke"
+path = "examples/metal_quit_smoke.rs"
+required-features = ["llama"]
