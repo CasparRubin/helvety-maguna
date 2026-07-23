@@ -13,7 +13,7 @@ type ChatMarkdownProps = {
 export function ChatMarkdown({ children, isAnimating = false }: ChatMarkdownProps) {
   return (
     <Streamdown
-      className="max-h-[40vh] overflow-y-auto text-sm [&_p]:whitespace-pre-wrap [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
+      className="text-sm [&_p]:whitespace-pre-wrap [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
       plugins={STREAMDOWN_PLUGINS}
       isAnimating={isAnimating}
       caret={isAnimating ? "block" : undefined}

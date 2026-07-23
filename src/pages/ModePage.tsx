@@ -13,6 +13,7 @@ import {
   type InferencePhase,
 } from "@/hooks/useInferenceListeners";
 import { useAutosizeTextarea } from "@/hooks/use-autosize-textarea";
+import { useStickToBottom } from "@/hooks/use-stick-to-bottom";
 import { useModesNav } from "@/context/modes-nav-context";
 import {
   stripChatArtifacts,
@@ -155,7 +156,6 @@ export function ModePage() {
   const userCancelledChatRef = useRef(false);
   const activeChatSessionIdRef = useRef<string | null>(null);
   const effectiveModelIdRef = useRef<string | null>(null);
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
   const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
   const outputTextareaRef = useRef<HTMLTextAreaElement>(null);
   const chatComposerRef = useRef<HTMLTextAreaElement>(null);
@@ -448,6 +448,11 @@ export function ModePage() {
 
   const layout = draft?.prompt_layout ?? "translate";
 
+  const { pin: pinTranscript } = useStickToBottom(chatTranscriptSlotRef, {
+    enabled: layout === "chat",
+    contentKey: `${chatMessages.length}:${chatMessages[chatMessages.length - 1]?.content.length ?? 0}:${busy}`,
+  });
+
   const modelSelectItems = useMemo(
     () => [
       { label: "Choose an installed model…", value: null },
@@ -642,17 +647,22 @@ export function ModePage() {
     setActiveChatSessionId(null);
     setChatMessages([]);
     setChatComposerText("");
+    pinTranscript();
     void invoke("reset_chat_kv").catch(() => {});
-  }, []);
+  }, [pinTranscript]);
 
-  const openStoredSession = useCallback((entry: ChatSessionArchiveEntry) => {
-    activeChatSessionIdRef.current = entry.id;
-    setActiveChatSessionId(entry.id);
-    setChatMessages(entry.messages);
-    setChatComposerText("");
-    setErr(null);
-    void invoke("reset_chat_kv").catch(() => {});
-  }, []);
+  const openStoredSession = useCallback(
+    (entry: ChatSessionArchiveEntry) => {
+      activeChatSessionIdRef.current = entry.id;
+      setActiveChatSessionId(entry.id);
+      setChatMessages(entry.messages);
+      setChatComposerText("");
+      setErr(null);
+      pinTranscript();
+      void invoke("reset_chat_kv").catch(() => {});
+    },
+    [pinTranscript],
+  );
 
   const deleteStoredSession = useCallback(
     (sessionId: string) => {
@@ -686,6 +696,7 @@ export function ModePage() {
       setRunStartedAt(Date.now());
       setCancelling(false);
       setChatComposerText("");
+      pinTranscript();
       setChatMessages([...msgsForInfer, { role: "assistant", content: "" }]);
       setBusy(true);
 
@@ -706,7 +717,15 @@ export function ModePage() {
         setBusy(false);
       }
     },
-    [draft, modeId, layout, chatComposerText, chatMessages, chatImagePath],
+    [
+      draft,
+      modeId,
+      layout,
+      chatComposerText,
+      chatMessages,
+      chatImagePath,
+      pinTranscript,
+    ],
   );
 
   const pasteAndSendChat = useCallback(async () => {
@@ -747,11 +766,6 @@ export function ModePage() {
       );
     }
   }, [busy, modelBinding?.effective_model_id, run]);
-
-  useEffect(() => {
-    if (layout !== "chat") return;
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [chatMessages, layout, busy]);
 
   if (!modeId) {
     return null;
@@ -805,13 +819,13 @@ export function ModePage() {
             aria-pressed={enableModelThinking}
             title={
               enableModelThinking
-                ? "Thinking on for Qwen / Gemma 4 / GLM-4.7 — chain-of-thought prose may appear (slower; control tags stripped). DeepSeek-R1 / GLM-Z1 always reason."
-                : "Thinking off for Qwen / Gemma 4 / GLM-4.7 — polished answers (reasoning content hidden). DeepSeek-R1 / GLM-Z1 still show reasoning prose."
+                ? "Thinking is on for Qwen / Gemma 4 / GLM-4.7 — chain-of-thought prose may appear (slower; control tags stripped). DeepSeek-R1 / GLM-Z1 always reason."
+                : "Thinking is off for Qwen / Gemma 4 / GLM-4.7 — polished answers (reasoning content hidden). DeepSeek-R1 / GLM-Z1 still show reasoning prose."
             }
             onClick={() => void toggleModelThinking()}
           >
             <Brain className="size-4" aria-hidden />
-            {enableModelThinking ? "Thinking on" : "Thinking off"}
+            {enableModelThinking ? "Thinking is on" : "Thinking is off"}
           </Button>
           <Button
             type="button"
@@ -1173,7 +1187,6 @@ export function ModePage() {
                       );
                     })
                   )}
-                  <div ref={transcriptEndRef} />
                 </div>
               </ScrollArea>
             </div>

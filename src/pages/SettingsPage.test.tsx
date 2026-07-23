@@ -61,7 +61,7 @@ describe("SettingsPage", () => {
       expect(TauriApi.invoke).toHaveBeenCalledWith("get_model_thinking_settings");
     });
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Thinking off/i })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /Thinking is off/i })).toBeTruthy();
       const builtInArea = screen.getByLabelText(
         /Built-in Maguna policy/i,
       ) as HTMLTextAreaElement;
@@ -169,7 +169,7 @@ describe("SettingsPage", () => {
       false,
     );
 
-    const btn = await screen.findByRole("button", { name: /Thinking off/i });
+    const btn = await screen.findByRole("button", { name: /Thinking is off/i });
     fireEvent.click(btn);
 
     await waitFor(() => {
@@ -178,11 +178,11 @@ describe("SettingsPage", () => {
       });
     });
     expect(
-      await screen.findByRole("button", { name: /Thinking on/i }),
+      await screen.findByRole("button", { name: /Thinking is on/i }),
     ).toBeInTheDocument();
   });
 
-  it("shows Thinking on when settings load with thinking enabled", async () => {
+  it("shows Thinking is on when settings load with thinking enabled", async () => {
     renderSettings(
       {
         enabled: true,
@@ -193,7 +193,7 @@ describe("SettingsPage", () => {
     );
 
     expect(
-      await screen.findByRole("button", { name: /Thinking on/i }),
+      await screen.findByRole("button", { name: /Thinking is on/i }),
     ).toBeInTheDocument();
   });
 });

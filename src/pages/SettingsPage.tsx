@@ -237,11 +237,11 @@ export function SettingsPage() {
             Model thinking
           </CardTitle>
           <CardDescription>
-            When off (default), Maguna asks Qwen, Gemma 4, and GLM-4.7 for polished
-            answers without a visible chain-of-thought—faster on laptops. Turn on to let
-            those models reason step by step (slower; reasoning prose stays in the
-            reply, without raw think/channel markup). DeepSeek-R1 and GLM-Z1 keep
-            reasoning prose on either way.
+            When Thinking is off (default), Maguna asks Qwen, Gemma 4, and GLM-4.7 for
+            polished answers without a visible chain-of-thought—faster on laptops. Set
+            Thinking is on to let those models reason step by step (slower; reasoning
+            prose stays in the reply, without raw think/channel markup). DeepSeek-R1 and
+            GLM-Z1 keep reasoning prose on either way.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -255,8 +255,8 @@ export function SettingsPage() {
             {thinking == null
               ? "Loading…"
               : thinking.enabled
-                ? "Thinking on"
-                : "Thinking off"}
+                ? "Thinking is on"
+                : "Thinking is off"}
           </Button>
         </CardContent>
       </Card>

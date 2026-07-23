@@ -468,7 +468,9 @@ describe("ModePage", () => {
     expect(
       screen.getByRole("button", { name: /edit configuration/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Thinking off/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Thinking is off/i }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Input & output")).toBeInTheDocument();
     expect(screen.queryByText(/open mode configuration/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/use input and output below/i)).not.toBeInTheDocument();
@@ -489,7 +491,7 @@ describe("ModePage", () => {
 
     renderAtMode(`/mode/${modeId}`);
 
-    const btn = await screen.findByRole("button", { name: /Thinking off/i });
+    const btn = await screen.findByRole("button", { name: /Thinking is off/i });
     fireEvent.click(btn);
 
     await waitFor(() => {
@@ -498,11 +500,11 @@ describe("ModePage", () => {
       });
     });
     expect(
-      await screen.findByRole("button", { name: /Thinking on/i }),
+      await screen.findByRole("button", { name: /Thinking is on/i }),
     ).toBeInTheDocument();
   });
 
-  it("loads Thinking on when get_model_thinking_settings returns enabled", async () => {
+  it("loads Thinking is on when get_model_thinking_settings returns enabled", async () => {
     const modeId = "vitest-thinking-enabled";
     modesNavState.modes = [
       {
@@ -531,7 +533,7 @@ describe("ModePage", () => {
     renderAtMode(`/mode/${modeId}`);
 
     expect(
-      await screen.findByRole("button", { name: /Thinking on/i }),
+      await screen.findByRole("button", { name: /Thinking is on/i }),
     ).toBeInTheDocument();
   });
 

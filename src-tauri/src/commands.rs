@@ -79,7 +79,8 @@ pub fn set_guardrails_settings(
         .map_err(|e| e.to_string())
 }
 
-/// Whether Maguna prompts allow model chain-of-thought for Qwen / Gemma 4 / GLM-4.7 Flash.
+/// Whether Maguna prompts allow model chain-of-thought for Qwen / Gemma 4 / GLM-4.7 Flash
+/// (UI toggle labels: **Thinking is on** / **Thinking is off**).
 /// DeepSeek-R1 / GLM-Z1 keep reasoning on regardless of this setting.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

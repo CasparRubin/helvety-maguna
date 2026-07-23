@@ -79,7 +79,7 @@ function stripThinkBlocks(text: string): string {
 
 /**
  * Remove think/channel markup while keeping reasoning and answer prose.
- * Used when Thinking is on (or DeepSeek-R1 / GLM-Z1).
+ * Used when Thinking is on (Settings / mode toggle), or for DeepSeek-R1 / GLM-Z1.
  */
 function unwrapReasoningTags(text: string): string {
   return text
@@ -93,7 +93,7 @@ function unwrapReasoningTags(text: string): string {
 
 export type StripChatArtifactsOptions = {
   /**
-   * Keep reasoning *text* visible (Settings Thinking on, or DeepSeek-R1 / GLM-Z1 models).
+   * Keep reasoning *text* visible (UI **Thinking is on**, or DeepSeek-R1 / GLM-Z1 models).
    * Structural tags are still removed.
    */
   preserveReasoning?: boolean;
@@ -160,9 +160,9 @@ function truncateAtMarkers(text: string, markers: readonly string[]): string {
 
 /**
  * Trim model control/framing tokens from streamed text. By default also discards
- * reasoning *content* (thinking off). Maguna defaults to thinking off in
+ * reasoning *content* (Thinking is off). Maguna defaults to thinking off in
  * Qwen/Gemma/GLM-4.7 prompts (empty think / `/nothink`) unless Settings / the
- * mode-page Thinking toggle is on. When thinking is on (or the model is
+ * mode-page toggle is set to **Thinking is on**. When thinking is on (or the model is
  * DeepSeek-R1 / GLM-Z1), pass `preserveReasoning: true` so reasoning prose stays
  * visible; think/channel markup and role tokens are still removed either way.
  */

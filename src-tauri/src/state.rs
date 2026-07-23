@@ -26,8 +26,9 @@ pub(crate) struct PersistedSettings {
     pub(crate) guardrails_enabled: bool,
     #[serde(default)]
     pub(crate) guardrails_custom_text: Option<String>,
-    /// When true, Qwen / Gemma 4 / GLM-4.7 Flash prompts allow chain-of-thought; default is polished copy (off).
-    /// DeepSeek-R1 / GLM-Z1 templates keep thinking on regardless of this flag.
+    /// When true (`Thinking is on` in the UI), Qwen / Gemma 4 / GLM-4.7 Flash prompts allow
+    /// chain-of-thought; default is polished copy (`Thinking is off`).
+    /// DeepSeek-R1 / GLM-Z1 templates keep reasoning prose on regardless of this flag.
     #[serde(default)]
     pub(crate) enable_model_thinking: bool,
 }

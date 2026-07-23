@@ -5,15 +5,16 @@
 //! overrides in `modes.json`).
 //!
 //! Qwen2.x / Qwen3 / Qwen3.5 / Qwen3.6 instruct uses ChatML (`im_start` / `im_end`). Maguna
-//! defaults to thinking off (empty `think` block; matches `enable_thinking=false`); Settings can
-//! turn thinking on. DeepSeek-R1 distill (`qwen2_instruct_reasoning`) keeps thinking enabled.
+//! defaults to **Thinking is off** (empty `think` block; matches `enable_thinking=false`); Settings /
+//! mode pages can set **Thinking is on**. DeepSeek-R1 distill (`qwen2_instruct_reasoning`) keeps
+//! thinking enabled.
 //! Ministral 3 and Moonshot Moonlight / Kimi K2 use `im_system` / `im_user` / `im_middle` tokens.
 //! Google Gemma 2 uses `<start_of_turn>` turns; Gemma 4 uses `<|turn>` / `<turn|>` with an empty
-//! `<|channel>thought` / `<channel|>` prefix when thinking is off (Settings can open the thought channel).
+//! `<|channel>thought` / `<channel|>` prefix when Thinking is off (Settings can open the thought channel).
 //! Microsoft Phi-4 mini uses `<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`.
 //! Tencent Hunyuan dense uses `<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`.
 //! Z.ai GLM-4 9B uses `[gMASK]<sop>` plus `<|system|>` / `<|user|>` / `<|assistant|>`.
-//! GLM-4.7 Flash appends `/nothink` on user turns when thinking is off; Settings can omit it.
+//! GLM-4.7 Flash appends `/nothink` on user turns when Thinking is off; Settings can omit it.
 //! GLM-Z1 opens a think block at generation time for reasoning imports.
 //!
 //! Filename / display-name hints (used for GGUF imports) are always compiled.
@@ -110,13 +111,13 @@ pub enum ChatTemplate {
     TinyLlamaV1,
     Llama3Instruct,
     MistralInstruct,
-    /// Qwen2 / Qwen2.5 / Qwen3 / Qwen3.5 / Qwen3.6 instruct (ChatML; thinking off by default via Settings).
+    /// Qwen2 / Qwen2.5 / Qwen3 / Qwen3.5 / Qwen3.6 instruct (ChatML; Thinking is off by default via Settings).
     QwenChatMl,
     /// Qwen ChatML with thinking always enabled (DeepSeek-R1 distill and similar reasoning models).
     QwenChatMlReasoning,
     /// Google Gemma 2 instruction-tuned (`start_of_turn` / `end_of_turn`).
     Gemma2It,
-    /// Google Gemma 4 instruction-tuned (`<|turn>` / `<turn|>` + channel prefix; thinking off by default).
+    /// Google Gemma 4 instruction-tuned (`<|turn>` / `<turn|>` + channel prefix; Thinking is off by default).
     Gemma4It,
     /// Mistral 3 / Ministral instruct (mistral-common token layout).
     Mistral3Instruct,
@@ -190,7 +191,8 @@ fn qwen_chatml_assistant_history(text: &str, disable_thinking: bool) -> String {
     }
 }
 
-/// Thinking off: empty thought channel then answer. Thinking on: open thought for the model to fill.
+/// Model-thinking disabled: empty thought channel then answer.
+/// Enabled (`Thinking is on`): open thought channel for the model to fill.
 #[cfg(feature = "llama")]
 fn gemma4_model_gen_prefix(enable_thinking: bool) -> &'static str {
     if enable_thinking {
@@ -278,7 +280,7 @@ impl ChatTemplate {
             .unwrap_or(Self::TinyLlamaV1)
     }
 
-    /// DeepSeek-R1 / GLM-Z1 keep thinking on; the Settings toggle enables it for everyday Qwen / Gemma 4 / GLM-4.7.
+    /// DeepSeek-R1 / GLM-Z1 keep reasoning on; the Settings/mode **Thinking is on** toggle enables it for everyday Qwen / Gemma 4 / GLM-4.7.
     pub fn resolve_enable_thinking(self, setting: bool) -> bool {
         match self {
             Self::QwenChatMlReasoning | Self::Glm4Z1Reasoning => true,

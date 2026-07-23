@@ -61,7 +61,7 @@
       "id": "deepseek-r1-0528-qwen3-8b-q4km",
       "maker": "DeepSeek",
       "display_name": "DeepSeek R1-0528 Qwen3 8B",
-      "description": "May 2025 R1-0528 reasoning distill into Qwen3 8B—stronger math/logic than the older R1 Distill Qwen 7B. Replies often include a visible chain-of-thought before the final answer (kept on even when Maguna’s Thinking toggle is off); prefer Gemma 4 12B, Ministral 3, or Qwen 3.5 when you want clean copy.",
+      "description": "May 2025 R1-0528 reasoning distill into Qwen3 8B—stronger math/logic than the older R1 Distill Qwen 7B. Replies often include a visible chain-of-thought before the final answer (kept on even when Maguna’s Thinking is off); prefer Gemma 4 12B, Ministral 3, or Qwen 3.5 when you want clean copy.",
       "url": "https://huggingface.co/bartowski/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-GGUF/resolve/main/deepseek-ai_DeepSeek-R1-0528-Qwen3-8B-Q4_K_M.gguf",
       "sha256": "e0c2f118fd59f3a16f20d18b0e7f79e960c84bc8c66d94fd71a691e05151d54f",
       "size_bytes": 5027783040,
