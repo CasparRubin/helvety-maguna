@@ -625,4 +625,58 @@ describe("ModelsPage", () => {
       });
     });
   });
+
+  it("Remove on an installed model invokes delete_model and refreshes", async () => {
+    await withTauriBridge(async () => {
+      const installed: InstalledModel[] = [
+        {
+          id: "local-1",
+          display_name: "Local One",
+          gguf_path: "/tmp/local-1.gguf",
+          sha256: null,
+          chat_template: "qwen2_instruct",
+        },
+      ];
+      let listed = [...installed];
+
+      vi.mocked(TauriApi.invoke).mockImplementation(((cmd: string, args?: unknown) => {
+        switch (cmd) {
+          case "get_catalog":
+            return Promise.resolve(emptyCatalog);
+          case "list_installed_models":
+            return Promise.resolve(listed);
+          case "get_active_model_id":
+            return Promise.resolve("local-1");
+          case "get_guardrails_settings":
+            return Promise.resolve(guardrailsPayload);
+          case "set_guardrails_settings":
+            return Promise.resolve(undefined);
+          case "delete_model":
+            expect(args).toEqual({ modelId: "local-1" });
+            listed = [];
+            return Promise.resolve(undefined);
+          default:
+            return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+        }
+      }) as typeof TauriApi.invoke);
+
+      render(
+        <MemoryRouter initialEntries={["/models"]}>
+          <ModelsPage />
+        </MemoryRouter>,
+      );
+
+      expect(await screen.findByText("Local One")).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /^remove$/i }));
+
+      await waitFor(() => {
+        expect(TauriApi.invoke).toHaveBeenCalledWith("delete_model", {
+          modelId: "local-1",
+        });
+      });
+      await waitFor(() => {
+        expect(screen.queryByText("Local One")).not.toBeInTheDocument();
+      });
+    });
+  });
 });

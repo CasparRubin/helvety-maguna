@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Fail CI/local builds if the macOS app binary still depends on unpackaged dylibs
+ * Fail local builds if the macOS app binary still depends on unpackaged dylibs
  * (@rpath ggml/llama or Homebrew libomp). Those break drag-to-Applications installs.
  */
 import { spawnSync } from "node:child_process";

@@ -1047,6 +1047,69 @@ mod validate_tests {
         let v = vec![mode("a", "Only", modes::PromptLayout::Plain, 128)];
         assert!(validate_modes(&v).is_err());
     }
+
+    #[test]
+    fn assert_en_de_locale_accepts_en_and_de() {
+        assert!(super::assert_en_de_locale("en").is_ok());
+        assert!(super::assert_en_de_locale("de").is_ok());
+        assert!(super::assert_en_de_locale("fr").is_err());
+        assert!(super::assert_en_de_locale("").is_err());
+    }
+
+    #[test]
+    fn assert_en_de_translate_requires_both_sides() {
+        assert!(super::assert_en_de_translate("de", "en").is_ok());
+        assert!(super::assert_en_de_translate("en", "de").is_ok());
+        assert!(super::assert_en_de_translate("de", "de").is_ok());
+        assert!(super::assert_en_de_translate("fr", "en").is_err());
+        assert!(super::assert_en_de_translate("en", "fr").is_err());
+    }
+}
+
+#[cfg(all(test, feature = "llama"))]
+mod truncate_chat_tests {
+    use super::{truncate_chat_invoke_messages, ChatInvokeMessage, ChatInvokeRole};
+    use crate::chat_template::ChatTemplate;
+
+    fn user(s: &str) -> ChatInvokeMessage {
+        ChatInvokeMessage {
+            role: ChatInvokeRole::User,
+            content: s.into(),
+        }
+    }
+
+    fn assistant(s: &str) -> ChatInvokeMessage {
+        ChatInvokeMessage {
+            role: ChatInvokeRole::Assistant,
+            content: s.into(),
+        }
+    }
+
+    #[test]
+    fn truncate_drops_oldest_pairs_until_under_budget() {
+        let pad = "x".repeat(4_000);
+        let mut messages = vec![
+            user(&pad),
+            assistant(&pad),
+            user(&pad),
+            assistant(&pad),
+            user("latest"),
+        ];
+        truncate_chat_invoke_messages(ChatTemplate::QwenChatMl, "SYS", &mut messages, false);
+        assert!(messages.len() < 5);
+        assert_eq!(messages.last().unwrap().content, "latest");
+        assert!(matches!(
+            messages.last().unwrap().role,
+            ChatInvokeRole::User
+        ));
+    }
+
+    #[test]
+    fn truncate_keeps_single_user_message() {
+        let mut messages = vec![user(&"y".repeat(20_000))];
+        truncate_chat_invoke_messages(ChatTemplate::QwenChatMl, "SYS", &mut messages, false);
+        assert_eq!(messages.len(), 1);
+    }
 }
 
 #[cfg(test)]

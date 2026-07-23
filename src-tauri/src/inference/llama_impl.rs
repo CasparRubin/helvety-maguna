@@ -269,3 +269,20 @@ pub fn stream_chat_completion(
     let _ = app.emit("inference-done", ());
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::common_prefix_len;
+    use llama_cpp_4::token::LlamaToken;
+
+    #[test]
+    fn common_prefix_len_counts_matching_prefix() {
+        let a = [LlamaToken(1), LlamaToken(2), LlamaToken(3)];
+        let b = [LlamaToken(1), LlamaToken(2), LlamaToken(9)];
+        assert_eq!(common_prefix_len(&a, &b), 2);
+        assert_eq!(common_prefix_len(&a, &a), 3);
+        assert_eq!(common_prefix_len(&a, &[]), 0);
+        assert_eq!(common_prefix_len(&[], &b), 0);
+        assert_eq!(common_prefix_len(&[LlamaToken(1)], &[LlamaToken(2)]), 0);
+    }
+}

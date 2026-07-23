@@ -22,7 +22,7 @@ import {
   AI_OUTPUT_DISCLAIMER_TERMS_HREF,
 } from "@/components/ai-output-disclaimer";
 
-import { ModePage } from "./ModePage";
+import { ModePage, AddModeNavButton } from "./ModePage";
 
 type InferenceHandlers = {
   onChunk: (s: string) => void;
@@ -1017,5 +1017,125 @@ describe("ModePage", () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("fixed typo");
     });
+  });
+
+  it("Cancel during chat invokes cancel_generation", async () => {
+    const modeId = "vitest-chat-cancel";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Chat cancel",
+        system_prompt: "",
+        prompt_layout: "chat",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    vi.mocked(tauriApi.invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_installed_models") return [];
+      if (cmd === "get_mode_model_binding") {
+        return { effective_model_id: "model-1", override_model_id: null };
+      }
+      if (cmd === "run_mode_chat") return new Promise(() => {});
+      if (cmd === "reset_chat_kv") return undefined;
+      if (cmd === "cancel_generation") return undefined;
+      if (cmd === "get_model_thinking_settings") return { enabled: false };
+      if (cmd === "set_model_thinking_settings") return undefined;
+      throw new Error(`unhandled invoke in test: ${cmd}`);
+    });
+
+    renderAtMode(`/mode/${modeId}`);
+    fireEvent.click(await screen.findByRole("button", { name: /paste and run/i }));
+
+    const cancel = await screen.findByRole("button", { name: /^cancel$/i });
+    expect(cancel).toBeEnabled();
+    fireEvent.click(cancel);
+
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith("cancel_generation");
+    });
+    expect(await screen.findByText(/cancel requested/i)).toBeInTheDocument();
+  });
+
+  it("Attach image stores path and sends it with run_mode_chat", async () => {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    vi.mocked(open).mockResolvedValueOnce("/tmp/photo.png");
+
+    const modeId = "vitest-chat-image";
+    modesNavState.modes = [
+      {
+        id: modeId,
+        name: "Chat image",
+        system_prompt: "",
+        prompt_layout: "chat",
+        max_tokens: 128,
+        builtin: false,
+      },
+    ];
+
+    renderAtMode(`/mode/${modeId}`);
+
+    fireEvent.click(await screen.findByRole("button", { name: /attach image/i }));
+    await waitFor(() => {
+      expect(open).toHaveBeenCalled();
+    });
+
+    const composer = screen.getByRole("textbox", { name: /^message$/i });
+    fireEvent.change(composer, { target: { value: "describe this" } });
+    fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith(
+        "run_mode_chat",
+        expect.objectContaining({
+          modeId,
+          imagePath: "/tmp/photo.png",
+          messages: [{ role: "user", content: "describe this" }],
+        }),
+      );
+    });
+  });
+});
+
+describe("AddModeNavButton", () => {
+  afterEach(() => {
+    cleanup();
+    vi.clearAllMocks();
+    modesNavState.modes = [];
+  });
+
+  it("creates a chat mode via set_modes and navigates to it", async () => {
+    modesNavState.modes = [];
+    modesNavState.refreshModes = vi.fn().mockResolvedValue(undefined);
+    vi.mocked(tauriApi.invoke).mockResolvedValue(undefined);
+
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <Routes>
+          <Route path="/" element={<AddModeNavButton />} />
+          <Route path="/mode/:modeId" element={<div>opened</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /^chat$/i }));
+
+    await waitFor(() => {
+      expect(tauriApi.invoke).toHaveBeenCalledWith(
+        "set_modes",
+        expect.objectContaining({
+          modes: [
+            expect.objectContaining({
+              name: "New chat mode",
+              prompt_layout: "chat",
+              builtin: false,
+            }),
+          ],
+        }),
+      );
+    });
+    expect(modesNavState.refreshModes).toHaveBeenCalled();
+    expect(await screen.findByText("opened")).toBeInTheDocument();
   });
 });

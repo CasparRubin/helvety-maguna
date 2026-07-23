@@ -32,7 +32,11 @@ pub async fn download_url_to_tmp(
 
     let url = Url::parse(url).map_err(|e| MagunaError::Http(e.to_string()))?;
     let client = reqwest::Client::builder()
-        .user_agent("Maguna/0.1 (local model download; +https://github.com/helvety/maguna)")
+        .user_agent(concat!(
+            "Maguna/",
+            env!("CARGO_PKG_VERSION"),
+            " (local model download; +https://github.com/helvety/maguna)"
+        ))
         .build()
         .map_err(|e| MagunaError::Http(e.to_string()))?;
 

@@ -878,6 +878,47 @@ mod llama_chat_template_tests {
             ChatTemplate::Glm4Z1Reasoning
         );
     }
+
+    #[test]
+    fn mistral3_instruct_single_turn_uses_im_role_tokens() {
+        const IM_END: &str = concat!("<|", "im_end", "|>");
+        const K_SYS: &str = concat!("<|", "im_system", "|>system<|", "im_middle", "|>");
+        const K_USER: &str = concat!("<|", "im_user", "|>user<|", "im_middle", "|>");
+        const K_ASST: &str = concat!("<|", "im_assistant", "|>assistant<|", "im_middle", "|>");
+        let p = ChatTemplate::Mistral3Instruct.format_prompt("SYS", "hello", false);
+        assert_eq!(
+            p,
+            format!("{K_SYS}SYS{IM_END}{K_USER}hello{IM_END}{K_ASST}")
+        );
+        assert_eq!(
+            ChatTemplate::from_catalog_str("mistral3_instruct"),
+            ChatTemplate::Mistral3Instruct
+        );
+    }
+
+    #[test]
+    fn mistral3_instruct_chat_continues_turns_and_opens_assistant() {
+        const IM_END: &str = concat!("<|", "im_end", "|>");
+        const K_USER: &str = concat!("<|", "im_user", "|>user<|", "im_middle", "|>");
+        const K_ASST: &str = concat!("<|", "im_assistant", "|>assistant<|", "im_middle", "|>");
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::Mistral3Instruct.format_prompt_chat("SYS", &pieces, false);
+        assert!(p.contains(&format!("{K_USER}first{IM_END}")));
+        assert!(p.contains(&format!("{K_ASST}reply{IM_END}")));
+        assert!(p.contains(&format!("{K_USER}second{IM_END}")));
+        assert!(p.ends_with(K_ASST));
+    }
+
+    #[test]
+    fn kimi_moonshot_shares_mistral3_layout() {
+        let a = ChatTemplate::Mistral3Instruct.format_prompt("SYS", "hi", false);
+        let b = ChatTemplate::KimiMoonshot.format_prompt("SYS", "hi", false);
+        assert_eq!(a, b);
+    }
 }
 
 #[cfg(test)]

@@ -27,7 +27,7 @@
     "test:watch": "vitest",
     "check:no-radix": "node scripts/check-no-radix.mjs",
     "check:rust": "cargo clippy --manifest-path src-tauri/Cargo.toml --no-default-features --all-targets -- -D warnings && cargo test --manifest-path src-tauri/Cargo.toml --no-default-features",
-    "check:rust:llama": "node scripts/ensure-llama-cmake-cache.mjs && cargo test --manifest-path src-tauri/Cargo.toml --features llama chat_template",
+    "check:rust:llama": "node scripts/ensure-llama-cmake-cache.mjs && cargo test --manifest-path src-tauri/Cargo.toml --features llama",
     "check": "bun run format:check && bun run lint && bun run check:no-radix && bun run test && bun run build && bun run check:rust"
   },
   "dependencies": {
@@ -36,7 +36,6 @@
     "@streamdown/code": "^1.1.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@tauri-apps/plugin-opener": "^2.5.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.17.0",

@@ -526,4 +526,33 @@ mod tests {
         let _ = fs::remove_dir_all(&p);
         let _ = fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn validate_model_id_rejects_path_traversal() {
+        assert!(validate_model_id("gemma-4-12b").is_ok());
+        assert!(validate_model_id("").is_err());
+        assert!(validate_model_id("../escape").is_err());
+        assert!(validate_model_id("a/b").is_err());
+        assert!(validate_model_id("a\\b").is_err());
+        assert!(validate_model_id("..").is_err());
+    }
+
+    #[test]
+    fn effective_mmproj_and_mtp_draft_fall_back_to_default_filenames() {
+        let dir = tmp_model_dir();
+        let mmproj = dir.join("mmproj.gguf");
+        let mtp = dir.join("mtp-draft.gguf");
+        fs::write(&mmproj, b"m").unwrap();
+        fs::write(&mtp, b"t").unwrap();
+        let m = manifest_stub("x", dir.join("x.gguf"));
+        assert_eq!(
+            effective_mmproj_path(&dir, &m).as_deref(),
+            Some(mmproj.as_path())
+        );
+        assert_eq!(
+            effective_mtp_draft_path(&dir, &m).as_deref(),
+            Some(mtp.as_path())
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
