@@ -1,11 +1,9 @@
 //! Optional vision path via llama.cpp `mtmd` when a catalog mmproj is installed.
 
-use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use llama_cpp_4::context::params::LlamaContextParams;
 use llama_cpp_4::llama_backend::LlamaBackend;
 use llama_cpp_4::llama_batch::LlamaBatch;
 use llama_cpp_4::model::{LlamaModel, Special};
@@ -32,7 +30,7 @@ pub fn stream_completion_with_image(
 ) -> Result<(), String> {
     if !mmproj_path.is_file() {
         return Err(
-            "No mmproj.gguf for this model. Install Gemma 4 12B from the catalog (includes the vision projector)."
+            "No mmproj.gguf for this model. Install a catalog model that includes a vision projector (mmproj), then attach images in Chat."
                 .into(),
         );
     }
@@ -42,9 +40,7 @@ pub fn stream_completion_with_image(
 
     let _ = app.emit("inference-phase", "prefill");
 
-    let ctx_params = LlamaContextParams::default().with_n_ctx(Some(
-        NonZeroU32::new(SESSION_N_CTX).ok_or_else(|| "invalid n_ctx".to_string())?,
-    ));
+    let ctx_params = super::llama_impl::maguna_context_params(SESSION_N_CTX)?;
     let mut lctx = model
         .new_context(backend, ctx_params)
         .map_err(|e| format!("create context: {e}"))?;
@@ -80,7 +76,7 @@ pub fn stream_completion_with_image(
 
     let _ = app.emit("inference-phase", "generating");
 
-    let mut sampler = sampler_profile.build();
+    let mut sampler = sampler_profile.build(model.n_vocab());
     let mut batch = LlamaBatch::new(SESSION_N_CTX as usize, 1);
     let mut logit_idx = 0i32;
 

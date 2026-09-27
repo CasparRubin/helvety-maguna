@@ -11,7 +11,7 @@ export type CatalogEntry = {
   languages: string[];
   license_note: string;
   hf_repo: string;
-  /** e.g. `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`, `mistral3_instruct`, `qwen2_instruct`, `qwen2_instruct_reasoning`, `gemma2_it`, `gemma4_it`, `moonshot_instruct`, `phi4_instruct`, `hunyuan_dense`, `glm4_instruct`, `glm47_flash`, `glm4_z1`; bundled catalog supplies this; omitting defaults to Rust `tinyllama_v1`. */
+  /** e.g. `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`, `mistral3_instruct`, `qwen2_instruct`, `qwen2_instruct_reasoning`, `gemma2_it`, `gemma4_it`, `moonshot_instruct`, `phi4_instruct`, `hunyuan_dense`, `glm4_instruct`, `glm47_flash`, `glm4_z1`, `gpt_oss`, `muse_glimmer`; bundled catalog supplies this; omitting defaults to Rust `tinyllama_v1`. */
   chat_template?: string;
   /** ISO `YYYY-MM-DD` for the upstream instruct checkpoint release when known. */
   release_date?: string | null;
@@ -20,8 +20,8 @@ export type CatalogEntry = {
   mmproj_sha256?: string | null;
   mmproj_size_bytes?: number | null;
   /**
-   * Optional MTP draft GGUF URL. Maguna downloads and stores this when present;
-   * the decode path uses in-model MTP heads, not this sidecar, today.
+   * Optional MTP draft GGUF URL. The shipped catalog does not list these;
+   * decode uses in-model MTP heads. Kept so older catalog JSON still parses.
    */
   mtp_draft_url?: string | null;
   mtp_draft_sha256?: string | null;

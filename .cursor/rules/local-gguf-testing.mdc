@@ -29,7 +29,7 @@ Installed weights live under **`maguna/models`** in per-user app data (macOS: `~
 
 ## spike_load
 
-Instruct models need a **family-specific chat template** in the prompt (Qwen, Gemma, GLM, Phi-4, Ministral 3, … — see `src-tauri/src/chat_template.rs`). Raw user text is only a rough smoke test.
+Instruct models need a **family-specific chat template** in the prompt (Qwen, Gemma, GLM, gpt-oss, Muse Glimmer, Ministral 3, … — see `src-tauri/src/chat_template.rs`). Raw user text is only a rough smoke test.
 
 ```bash
 cd src-tauri && cargo run --example spike_load --features llama -- \

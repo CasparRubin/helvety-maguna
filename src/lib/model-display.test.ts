@@ -25,11 +25,11 @@ describe("compactModelDisplayName", () => {
     );
   });
 
-  it("preserves non-verbose names including current catalog labels", () => {
-    expect(compactModelDisplayName("DeepSeek R1-0528 Qwen3 8B")).toBe(
-      "DeepSeek R1-0528 Qwen3 8B",
-    );
-    expect(compactModelDisplayName("HY-MT1.5 7B")).toBe("HY-MT1.5 7B");
+  it("preserves names that are already compact", () => {
+    expect(compactModelDisplayName("Hy-MT2 7B")).toBe("Hy-MT2 7B");
+    expect(compactModelDisplayName("gpt-oss 20B")).toBe("gpt-oss 20B");
+    expect(compactModelDisplayName("Muse Glimmer 30B")).toBe("Muse Glimmer 30B");
+    expect(compactModelDisplayName("Gemma 4 E4B")).toBe("Gemma 4 E4B");
     expect(compactModelDisplayName("Custom Team Model")).toBe("Custom Team Model");
   });
 

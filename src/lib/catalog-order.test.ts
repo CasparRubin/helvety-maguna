@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CatalogEntry } from "@/lib/types";
-import { EXPECTED_V9_SIZE_ORDER } from "@/lib/catalog-expectations";
+import { EXPECTED_V10_SIZE_ORDER } from "@/lib/catalog-expectations";
 import {
   formatApproxDownloadGb,
   formatCatalogReleaseDate,
@@ -46,24 +46,20 @@ describe("sortCatalogBySizeAscending", () => {
 
   it("handles same sizes as shipped catalog quants", () => {
     const sorted = sortCatalogBySizeAscending([
-      entry("hy-mt15-7b-q4km", "HY-MT1.5 7B", 4_624_649_312),
-      entry(
-        "deepseek-r1-0528-qwen3-8b-q4km",
-        "DeepSeek R1-0528 Qwen3 8B",
-        5_027_783_040,
-      ),
+      entry("hy-mt2-7b-q4km", "Hy-MT2 7B", 4_624_648_896),
+      entry("gemma-4-e4b-it-q4km", "Gemma 4 E4B", 4_977_171_584),
       entry("ministral-3-8b-instruct-q4km", "Ministral 3 8B", 5_198_387_456),
     ]);
     expect(sorted.map((e) => e.id)).toEqual([
-      "hy-mt15-7b-q4km",
-      "deepseek-r1-0528-qwen3-8b-q4km",
+      "hy-mt2-7b-q4km",
+      "gemma-4-e4b-it-q4km",
       "ministral-3-8b-instruct-q4km",
     ]);
   });
 
-  it("orders full shipped catalog v9 by download size ascending", () => {
+  it("orders full shipped catalog v10 by download size ascending", () => {
     const sorted = sortCatalogBySizeAscending(SHIPPED_CATALOG.models);
-    expect(sorted.map((e) => e.id)).toEqual([...EXPECTED_V9_SIZE_ORDER]);
+    expect(sorted.map((e) => e.id)).toEqual([...EXPECTED_V10_SIZE_ORDER]);
   });
 });
 

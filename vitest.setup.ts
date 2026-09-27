@@ -13,4 +13,8 @@ if (typeof Element !== "undefined") {
   if (typeof Element.prototype.getAnimations !== "function") {
     Element.prototype.getAnimations = () => [];
   }
+  // Streamdown 2.6 code blocks call scrollTo in jsdom, which has no implementation.
+  if (typeof Element.prototype.scrollTo !== "function") {
+    Element.prototype.scrollTo = function scrollTo(): void {};
+  }
 }

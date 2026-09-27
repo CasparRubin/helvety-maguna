@@ -39,8 +39,12 @@ fn main() -> Result<(), String> {
     }
 
     let backend = LlamaBackend::init().map_err(|e| format!("backend init: {e}"))?;
-    let model = LlamaModel::load_from_file(&backend, &path, &LlamaModelParams::default())
-        .map_err(|e| format!("load model: {e}"))?;
+    let model = LlamaModel::load_from_file(
+        &backend,
+        &path,
+        &LlamaModelParams::default().with_load_mtp(true),
+    )
+    .map_err(|e| format!("load model: {e}"))?;
     eprintln!("loaded {path} (mode={mode})");
 
     match mode.as_str() {

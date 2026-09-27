@@ -161,7 +161,7 @@ describe("ModelsPage", () => {
 
     const catalogBlurb = screen.getByText(/Smallest downloads first/i);
     expect(catalogBlurb.textContent).toMatch(/writing and chat/i);
-    expect(catalogBlurb.textContent).toMatch(/HY-MT1\.5 7B/);
+    expect(catalogBlurb.textContent).toMatch(/Hy-MT2 7B/);
     expect(catalogBlurb.textContent).toMatch(/Translate/i);
 
     const gemmaCard = screen.getByText("Recommended").closest(".rounded-xl");

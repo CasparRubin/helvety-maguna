@@ -25,7 +25,7 @@ pub struct CatalogModel {
     /// Chat framing key (`chat_template`): `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`,
     /// `qwen2_instruct`, `qwen2_instruct_reasoning`, `gemma2_it`, `gemma4_it`, `mistral3_instruct`,
     /// `moonshot_instruct` (`kimi_k2`/`kimi` aliases), `phi4_instruct`, `hunyuan_dense`,
-    /// `glm4_instruct`, `glm47_flash`, `glm4_z1`, etc.—must match the instruct GGUF layout.
+    /// `glm4_instruct`, `glm47_flash`, `glm4_z1`, `gpt_oss`, `muse_glimmer`, etc.—must match the instruct GGUF layout.
     #[serde(default = "default_chat_template")]
     pub chat_template: String,
     /// Public release of this checkpoint family (`YYYY-MM-DD`), from upstream cards; optional.
@@ -38,8 +38,8 @@ pub struct CatalogModel {
     pub mmproj_sha256: Option<String>,
     #[serde(default)]
     pub mmproj_size_bytes: Option<u64>,
-    /// Optional MTP draft GGUF URL. Downloaded/stored when present; Maguna's decode
-    /// loop uses in-model MTP heads today, not this sidecar.
+    /// Optional MTP draft GGUF URL. The shipped catalog does not list these; decode
+    /// uses in-model MTP heads. Older installs may still have a file on disk.
     #[serde(default)]
     pub mtp_draft_url: Option<String>,
     #[serde(default)]
@@ -85,21 +85,23 @@ mod tests {
 
     const LEGACY_V8_IDS: &[&str] = &["deepseek-r1-distill-qwen-7b-q4km", "hunyuan-mt-7b-q4km"];
 
+    const LEGACY_V9_IDS: &[&str] = &[
+        "phi-4-mini-instruct-q4km",
+        "hy-mt15-7b-q4km",
+        "qwen3.6-27b-q4km",
+        "deepseek-r1-0528-qwen3-8b-q4km",
+    ];
+
     /// Keep in sync with `src/lib/catalog-expectations.ts`.
-    const EXPECTED_V9_MODELS: &[(&str, &str, u64)] = &[
+    const EXPECTED_V10_MODELS: &[(&str, &str, u64)] = &[
         (
             "ministral-3-3b-instruct-q4km",
             "mistral3_instruct",
             2_146_498_528,
         ),
-        ("phi-4-mini-instruct-q4km", "phi4_instruct", 2_491_874_688),
         ("qwen3.5-4b-q4km", "qwen2_instruct", 3_013_027_808),
-        ("hy-mt15-7b-q4km", "hunyuan_dense", 4_624_649_312),
-        (
-            "deepseek-r1-0528-qwen3-8b-q4km",
-            "qwen2_instruct_reasoning",
-            5_027_783_040,
-        ),
+        ("hy-mt2-7b-q4km", "hunyuan_dense", 4_624_648_896),
+        ("gemma-4-e4b-it-q4km", "gemma4_it", 4_977_171_584),
         (
             "ministral-3-8b-instruct-q4km",
             "mistral3_instruct",
@@ -113,85 +115,47 @@ mod tests {
             "mistral3_instruct",
             8_239_068_576,
         ),
+        ("gpt-oss-20b-q4km", "gpt_oss", 11_673_418_816),
+        ("qwen3.8-27b-q4km", "qwen2_instruct", 16_464_440_224),
+        ("muse-glimmer-30b-q4km", "muse_glimmer", 16_756_683_904),
         ("gemma-4-26b-a4b-it-q4km", "gemma4_it", 17_035_038_112),
-        ("qwen3.6-27b-q4km", "qwen2_instruct", 17_984_872_960),
         ("glm-4.7-flash-q4km", "glm47_flash", 18_474_983_296),
     ];
 
     #[test]
-    fn bundled_catalog_is_version_9_with_thirteen_models() {
+    fn bundled_catalog_is_version_10_with_fourteen_models() {
         let cat = load_catalog().expect("embedded catalog.json");
-        assert_eq!(cat.version, 9);
-        assert_eq!(cat.models.len(), 13);
+        assert_eq!(cat.version, 10);
+        assert_eq!(cat.models.len(), 14);
     }
 
     #[test]
-    fn catalog_dropped_legacy_v4_ids() {
+    fn catalog_omits_retired_ids() {
         let ids: Vec<String> = load_catalog()
             .expect("catalog")
             .models
             .into_iter()
             .map(|m| m.id)
             .collect();
-        for legacy in LEGACY_V4_IDS {
-            assert!(
-                !ids.iter().any(|id| id == legacy),
-                "legacy id still in catalog: {legacy}"
-            );
+        for group in [
+            LEGACY_V4_IDS,
+            LEGACY_V5_IDS,
+            LEGACY_V7_IDS,
+            LEGACY_V8_IDS,
+            LEGACY_V9_IDS,
+        ] {
+            for legacy in group {
+                assert!(
+                    !ids.iter().any(|id| id == *legacy),
+                    "legacy id still in catalog: {legacy}"
+                );
+            }
         }
     }
 
     #[test]
-    fn catalog_dropped_legacy_v5_ids() {
-        let ids: Vec<String> = load_catalog()
-            .expect("catalog")
-            .models
-            .into_iter()
-            .map(|m| m.id)
-            .collect();
-        for legacy in LEGACY_V5_IDS {
-            assert!(
-                !ids.iter().any(|id| id == legacy),
-                "legacy id still in catalog: {legacy}"
-            );
-        }
-    }
-
-    #[test]
-    fn catalog_dropped_legacy_v7_ids() {
-        let ids: Vec<String> = load_catalog()
-            .expect("catalog")
-            .models
-            .into_iter()
-            .map(|m| m.id)
-            .collect();
-        for legacy in LEGACY_V7_IDS {
-            assert!(
-                !ids.iter().any(|id| id == legacy),
-                "legacy id still in catalog: {legacy}"
-            );
-        }
-    }
-
-    #[test]
-    fn catalog_dropped_legacy_v8_ids() {
-        let ids: Vec<String> = load_catalog()
-            .expect("catalog")
-            .models
-            .into_iter()
-            .map(|m| m.id)
-            .collect();
-        for legacy in LEGACY_V8_IDS {
-            assert!(
-                !ids.iter().any(|id| id == legacy),
-                "legacy id still in catalog: {legacy}"
-            );
-        }
-    }
-
-    #[test]
-    fn catalog_v9_ids_and_templates() {
-        for &(id, template, size_bytes) in EXPECTED_V9_MODELS {
+    fn catalog_v10_ids_and_templates() {
+        for &(id, template, size_bytes) in EXPECTED_V10_MODELS {
             let model = find_catalog_model(id).unwrap_or_else(|_| panic!("{id}"));
             assert_eq!(model.chat_template, template, "{id}");
             assert_eq!(model.size_bytes, size_bytes, "{id}");
@@ -208,12 +172,33 @@ mod tests {
     }
 
     #[test]
-    fn gemma_4_12b_ships_mmproj_and_mtp_sidecars() {
+    fn gemma_4_12b_ships_mmproj_without_draft_sidecar() {
         let m = find_catalog_model("gemma-4-12b-it-q4km").expect("gemma");
         assert!(m.mmproj_url.as_ref().is_some_and(|u| u.contains("mmproj")));
         assert_eq!(m.mmproj_size_bytes, Some(175_115_840));
-        assert!(m.mtp_draft_url.as_ref().is_some_and(|u| u.contains("mtp")));
-        assert_eq!(m.mtp_draft_size_bytes, Some(465_109_248));
+        assert!(m.mtp_draft_url.is_none());
+        assert!(m.mtp_draft_sha256.is_none());
+        assert!(m.mtp_draft_size_bytes.is_none());
+    }
+
+    #[test]
+    fn catalog_v10_vision_models_omit_draft_sidecars() {
+        for id in [
+            "gemma-4-e4b-it-q4km",
+            "gemma-4-12b-it-q4km",
+            "qwen3.8-27b-q4km",
+            "muse-glimmer-30b-q4km",
+        ] {
+            let model = find_catalog_model(id).unwrap_or_else(|_| panic!("{id}"));
+            assert!(
+                model
+                    .mmproj_url
+                    .as_ref()
+                    .is_some_and(|u| u.contains("mmproj")),
+                "{id}"
+            );
+            assert!(model.mtp_draft_url.is_none(), "{id}");
+        }
     }
 
     #[test]
@@ -221,7 +206,7 @@ mod tests {
         let mut models = load_catalog().expect("catalog").models;
         models.sort_by_key(|m| m.size_bytes);
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
-        let expected: Vec<&str> = EXPECTED_V9_MODELS.iter().map(|(id, _, _)| *id).collect();
+        let expected: Vec<&str> = EXPECTED_V10_MODELS.iter().map(|(id, _, _)| *id).collect();
         assert_eq!(ids, expected);
     }
 }

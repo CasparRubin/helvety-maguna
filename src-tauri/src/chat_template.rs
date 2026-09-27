@@ -4,15 +4,17 @@
 //! built-in or custom text) plus mode-specific prose from [`crate::modes::ModeDefinition`] (defaults in [`crate::prompts`],
 //! overrides in `modes.json`).
 //!
-//! Qwen2.x / Qwen3 / Qwen3.5 / Qwen3.6 instruct uses ChatML (`im_start` / `im_end`). Maguna
+//! Qwen2.x / Qwen3 / Qwen3.5 / Qwen3.8 instruct uses ChatML (`im_start` / `im_end`). Maguna
 //! defaults to **Thinking is off** (empty `think` block; matches `enable_thinking=false`); Settings /
 //! mode pages can set **Thinking is on**. DeepSeek-R1 distill (`qwen2_instruct_reasoning`) keeps
 //! thinking enabled.
 //! Ministral 3 and Moonshot Moonlight / Kimi K2 use `im_system` / `im_user` / `im_middle` tokens.
 //! Google Gemma 2 uses `<start_of_turn>` turns; Gemma 4 uses `<|turn>` / `<turn|>` with an empty
 //! `<|channel>thought` / `<channel|>` prefix when Thinking is off (Settings can open the thought channel).
-//! Microsoft Phi-4 mini uses `<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`.
-//! Tencent Hunyuan dense uses `<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`.
+//! Microsoft Phi-4 (imports) uses `<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`.
+//! Tencent Hunyuan dense / Hy-MT2 uses `<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`.
+//! OpenAI gpt-oss uses Harmony (`<|start|>` / `<|channel|>analysis` / `<|channel|>final`).
+//! Meta Muse Glimmer uses ATEM (`<|start|>role<|message|>` / `<|eot|>`) with a Reasoning strength line.
 //! Z.ai GLM-4 9B uses `[gMASK]<sop>` plus `<|system|>` / `<|user|>` / `<|assistant|>`.
 //! GLM-4.7 Flash appends `/nothink` on user turns when Thinking is off; Settings can omit it.
 //! GLM-Z1 opens a think block at generation time for reasoning imports.
@@ -32,7 +34,18 @@ pub fn try_catalog_template_key_from_hint(hint: &str) -> Option<&'static str> {
     if lower.contains("mistral") {
         return Some("mistral_instruct");
     }
-    if lower.contains("hunyuan") {
+    if lower.contains("gpt-oss") || lower.contains("gpt_oss") || lower.contains("gptoss") {
+        return Some("gpt_oss");
+    }
+    if lower.contains("muse-glimmer") || lower.contains("muse_glimmer") || lower.contains("glimmer")
+    {
+        return Some("muse_glimmer");
+    }
+    if lower.contains("hunyuan")
+        || lower.contains("hy-mt")
+        || lower.contains("hy_mt")
+        || lower.contains("hymt")
+    {
         return Some("hunyuan_dense");
     }
     if lower.contains("phi-4") || lower.contains("phi4") || lower.contains("phi_4") {
@@ -111,7 +124,7 @@ pub enum ChatTemplate {
     TinyLlamaV1,
     Llama3Instruct,
     MistralInstruct,
-    /// Qwen2 / Qwen2.5 / Qwen3 / Qwen3.5 / Qwen3.6 instruct (ChatML; Thinking is off by default via Settings).
+    /// Qwen2 / Qwen2.5 / Qwen3 / Qwen3.5 / Qwen3.8 instruct (ChatML; Thinking is off by default via Settings).
     QwenChatMl,
     /// Qwen ChatML with thinking always enabled (DeepSeek-R1 distill and similar reasoning models).
     QwenChatMlReasoning,
@@ -123,9 +136,9 @@ pub enum ChatTemplate {
     Mistral3Instruct,
     /// Moonshot Moonlight, Kimi K2 instruct, and same token layout as llama.cpp `kimi-k2`.
     KimiMoonshot,
-    /// Microsoft Phi-4 mini instruct (`<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`).
+    /// Microsoft Phi-4 instruct (`<|system|>`, `<|user|>`, `<|assistant|>`, `<|end|>`); catalog imports.
     Phi4Instruct,
-    /// Tencent Hunyuan dense / Hunyuan-MT (`<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`).
+    /// Tencent Hunyuan dense / Hy-MT2 (`<|startoftext|>`, `<|extra_4|>`, `<|extra_0|>`, `<|eos|>`).
     HunyuanDense,
     /// Z.ai GLM-4 9B instruct (`[gMASK]<sop>` + role tokens).
     Glm4Instruct,
@@ -133,6 +146,10 @@ pub enum ChatTemplate {
     Glm47Flash,
     /// Z.ai GLM-Z1 reasoning (opens a think block at generation time; always on).
     Glm4Z1Reasoning,
+    /// OpenAI gpt-oss Harmony (`<|start|>` / `<|channel|>analysis` / `<|channel|>final`).
+    GptOssHarmony,
+    /// Meta Muse Glimmer ATEM (`<|start|>role<|message|>` / `<|eot|>`; reasoning strength in system).
+    MuseGlimmer,
 }
 
 #[cfg(feature = "llama")]
@@ -164,6 +181,108 @@ fn glm_assistant_gen_prefix(enable_thinking: bool) -> String {
     } else {
         "<|assistant|>".to_string()
     }
+}
+
+#[cfg(feature = "llama")]
+fn harmony_start() -> &'static str {
+    concat!("<|", "start", "|>")
+}
+
+#[cfg(feature = "llama")]
+fn harmony_message() -> &'static str {
+    concat!("<|", "message", "|>")
+}
+
+#[cfg(feature = "llama")]
+fn harmony_end() -> &'static str {
+    concat!("<|", "end", "|>")
+}
+
+#[cfg(feature = "llama")]
+fn harmony_channel() -> &'static str {
+    concat!("<|", "channel", "|>")
+}
+
+/// gpt-oss Harmony: Thinking off → `final` channel; on → `analysis`.
+#[cfg(feature = "llama")]
+fn harmony_assistant_gen_prefix(thinking: bool) -> String {
+    let start = harmony_start();
+    let ch = harmony_channel();
+    let msg = harmony_message();
+    if thinking {
+        format!("{start}assistant{ch}analysis{msg}")
+    } else {
+        format!("{start}assistant{ch}final{msg}")
+    }
+}
+
+#[cfg(feature = "llama")]
+fn harmony_system_block(system: &str, thinking: bool) -> String {
+    let start = harmony_start();
+    let msg = harmony_message();
+    let end = harmony_end();
+    let effort = if thinking { "medium" } else { "low" };
+    format!(
+        "{start}system{msg}{system}\n\nReasoning: {effort}\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.{end}"
+    )
+}
+
+#[cfg(feature = "llama")]
+fn harmony_user_block(user: &str) -> String {
+    format!(
+        "{}user{}{user}{}",
+        harmony_start(),
+        harmony_message(),
+        harmony_end()
+    )
+}
+
+#[cfg(feature = "llama")]
+fn harmony_assistant_history(text: &str) -> String {
+    let start = harmony_start();
+    let ch = harmony_channel();
+    let msg = harmony_message();
+    let end = harmony_end();
+    format!("{start}assistant{ch}final{msg}{text}{end}")
+}
+
+#[cfg(feature = "llama")]
+fn glimmer_eot() -> &'static str {
+    concat!("<|", "eot", "|>")
+}
+
+#[cfg(feature = "llama")]
+fn glimmer_system_block(system: &str, thinking: bool) -> String {
+    let start = harmony_start();
+    let msg = harmony_message();
+    let eot = glimmer_eot();
+    let strength = if thinking { "high" } else { "low" };
+    format!(
+        "{start}system{msg}{system}\n\nReasoning strength: {strength}.\n\n# Valid recipients: \"self\", \"user\".{eot}"
+    )
+}
+
+#[cfg(feature = "llama")]
+fn glimmer_user_block(user: &str) -> String {
+    format!(
+        "{}user{}{user}{}",
+        harmony_start(),
+        harmony_message(),
+        glimmer_eot()
+    )
+}
+
+#[cfg(feature = "llama")]
+fn glimmer_assistant_history(text: &str) -> String {
+    let start = harmony_start();
+    let msg = harmony_message();
+    let eot = glimmer_eot();
+    format!("{start}assistant to=user{msg}{text}{eot}")
+}
+
+#[cfg(feature = "llama")]
+fn glimmer_assistant_gen_prefix() -> String {
+    format!("{}assistant", harmony_start())
 }
 
 #[cfg(feature = "llama")]
@@ -270,6 +389,8 @@ impl ChatTemplate {
             "glm4_instruct" | "glm4" | "chatglm4" => Self::Glm4Instruct,
             "glm47_flash" | "glm4_flash" | "glm-4.7-flash" => Self::Glm47Flash,
             "glm4_z1" | "glm_z1" => Self::Glm4Z1Reasoning,
+            "gpt_oss" | "gpt-oss" | "harmony" => Self::GptOssHarmony,
+            "muse_glimmer" | "muse-glimmer" | "glimmer" => Self::MuseGlimmer,
             _ => Self::TinyLlamaV1,
         }
     }
@@ -284,7 +405,11 @@ impl ChatTemplate {
     pub fn resolve_enable_thinking(self, setting: bool) -> bool {
         match self {
             Self::QwenChatMlReasoning | Self::Glm4Z1Reasoning => true,
-            Self::QwenChatMl | Self::Gemma4It | Self::Glm47Flash => setting,
+            Self::QwenChatMl
+            | Self::Gemma4It
+            | Self::Glm47Flash
+            | Self::GptOssHarmony
+            | Self::MuseGlimmer => setting,
             Self::TinyLlamaV1
             | Self::Llama3Instruct
             | Self::MistralInstruct
@@ -356,6 +481,18 @@ impl ChatTemplate {
                     glm_assistant_gen_prefix(thinking)
                 )
             }
+            Self::GptOssHarmony => format!(
+                "{}{}{}",
+                harmony_system_block(system, thinking),
+                harmony_user_block(user),
+                harmony_assistant_gen_prefix(thinking)
+            ),
+            Self::MuseGlimmer => format!(
+                "{}{}{}",
+                glimmer_system_block(system, thinking),
+                glimmer_user_block(user),
+                glimmer_assistant_gen_prefix()
+            ),
         }
     }
 
@@ -577,6 +714,28 @@ impl ChatTemplate {
                     }
                 }
                 s.push_str(&glm_assistant_gen_prefix(thinking));
+                s
+            }
+            Self::GptOssHarmony => {
+                let mut s = harmony_system_block(system, thinking);
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => s.push_str(&harmony_user_block(text)),
+                        ChatPieceRole::Assistant => s.push_str(&harmony_assistant_history(text)),
+                    }
+                }
+                s.push_str(&harmony_assistant_gen_prefix(thinking));
+                s
+            }
+            Self::MuseGlimmer => {
+                let mut s = glimmer_system_block(system, thinking);
+                for &(role, text) in pieces {
+                    match role {
+                        ChatPieceRole::User => s.push_str(&glimmer_user_block(text)),
+                        ChatPieceRole::Assistant => s.push_str(&glimmer_assistant_history(text)),
+                    }
+                }
+                s.push_str(&glimmer_assistant_gen_prefix());
                 s
             }
         }
@@ -921,6 +1080,98 @@ mod llama_chat_template_tests {
         let b = ChatTemplate::KimiMoonshot.format_prompt("SYS", "hi", false);
         assert_eq!(a, b);
     }
+
+    #[test]
+    fn gpt_oss_harmony_thinking_off_opens_final_channel() {
+        let p = ChatTemplate::GptOssHarmony.format_prompt("SYS", "hello", false);
+        assert!(p.contains("Reasoning: low"), "{p}");
+        assert!(p.contains("Valid channels: analysis"), "{p}");
+        assert!(
+            p.ends_with("<|start|>assistant<|channel|>final<|message|>"),
+            "{p}"
+        );
+        assert_eq!(
+            ChatTemplate::from_catalog_str("gpt_oss"),
+            ChatTemplate::GptOssHarmony
+        );
+    }
+
+    #[test]
+    fn gpt_oss_harmony_thinking_on_opens_analysis_channel() {
+        let p = ChatTemplate::GptOssHarmony.format_prompt("SYS", "hello", true);
+        assert!(p.contains("Reasoning: medium"), "{p}");
+        assert!(
+            p.ends_with("<|start|>assistant<|channel|>analysis<|message|>"),
+            "{p}"
+        );
+    }
+
+    #[test]
+    fn gpt_oss_harmony_chat_history_uses_final_channel() {
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::GptOssHarmony.format_prompt_chat("SYS", &pieces, false);
+        assert!(p.contains("<|start|>user<|message|>first<|end|>"), "{p}");
+        assert!(
+            p.contains("<|start|>assistant<|channel|>final<|message|>reply<|end|>"),
+            "{p}"
+        );
+        assert!(p.contains("<|start|>user<|message|>second<|end|>"), "{p}");
+        assert!(
+            p.ends_with("<|start|>assistant<|channel|>final<|message|>"),
+            "{p}"
+        );
+    }
+
+    #[test]
+    fn muse_glimmer_sets_reasoning_strength_and_opens_assistant() {
+        let off = ChatTemplate::MuseGlimmer.format_prompt("SYS", "hello", false);
+        assert!(off.contains("Reasoning strength: low."), "{off}");
+        assert!(
+            off.contains("# Valid recipients: \"self\", \"user\"."),
+            "{off}"
+        );
+        assert!(
+            off.contains("<|start|>user<|message|>hello<|eot|>"),
+            "{off}"
+        );
+        assert!(off.ends_with("<|start|>assistant"), "{off}");
+        let on = ChatTemplate::MuseGlimmer.format_prompt("SYS", "hello", true);
+        assert!(on.contains("Reasoning strength: high."), "{on}");
+        assert_eq!(
+            ChatTemplate::from_catalog_str("muse_glimmer"),
+            ChatTemplate::MuseGlimmer
+        );
+    }
+
+    #[test]
+    fn muse_glimmer_chat_history_routes_assistant_to_user() {
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::MuseGlimmer.format_prompt_chat("SYS", &pieces, false);
+        assert!(
+            p.contains("<|start|>assistant to=user<|message|>reply<|eot|>"),
+            "{p}"
+        );
+        assert!(p.contains("<|start|>user<|message|>second<|eot|>"), "{p}");
+        assert!(p.ends_with("<|start|>assistant"), "{p}");
+    }
+
+    #[test]
+    fn hy_mt2_uses_hunyuan_dense_extra_tokens() {
+        assert_eq!(
+            ChatTemplate::from_catalog_str("hunyuan_dense"),
+            ChatTemplate::HunyuanDense
+        );
+        let p = ChatTemplate::HunyuanDense.format_prompt("SYS", "hello", false);
+        assert_eq!(p, "<|startoftext|>SYS<|extra_4|>hello<|extra_0|>");
+    }
 }
 
 #[cfg(test)]
@@ -968,6 +1219,18 @@ mod tests {
         assert_eq!(
             manifest_template_key_from_hints(["Hunyuan-MT-7B-q4_k_m"]),
             "hunyuan_dense".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["Hy-MT2-7B-Q4_K_M"]),
+            "hunyuan_dense".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["openai_gpt-oss-20b-Q4_K_M"]),
+            "gpt_oss".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["Muse-Glimmer-30B-KQuant-17GB-Q4_K_M"]),
+            "muse_glimmer".to_string()
         );
         assert_eq!(
             manifest_template_key_from_hints(["zai-org_GLM-4.7-Flash-Q4_K_M"]),

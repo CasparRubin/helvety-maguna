@@ -275,8 +275,6 @@ impl AppState {
 
     #[cfg(feature = "llama")]
     pub fn load_model_for_id(&self, app: &tauri::AppHandle, model_id: &str) -> MagunaResult<()> {
-        use llama_cpp_4::model::params::LlamaModelParams;
-
         let dir = paths::models_dir(app)?.join(model_id);
         let manifest = crate::storage::read_manifest(&dir)?;
         let template = ChatTemplate::resolve(&manifest.chat_template, model_id);
@@ -284,7 +282,7 @@ impl AppState {
         let model = llama_cpp_4::model::LlamaModel::load_from_file(
             self.llama_backend.as_ref(),
             path,
-            &LlamaModelParams::default(),
+            &crate::inference::maguna_model_params(),
         )
         .map_err(|e| MagunaError::msg(format!("load model: {e}")))?;
         *self.loaded.lock() = Some((model_id.to_string(), template, Arc::new(model)));

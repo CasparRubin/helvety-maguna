@@ -46,7 +46,7 @@ type DownloadPhase = "downloading" | "installing";
 type DownloadProgress = {
   modelId: string;
   phase: DownloadPhase;
-  /** When set, this download event is an optional catalog sidecar (mmproj / mtp). */
+  /** When set, this download event is an optional vision projector (mmproj). */
   sidecar: string | null;
   received: number;
   total: number | null;
@@ -54,7 +54,6 @@ type DownloadProgress = {
 
 function sidecarDownloadLabel(sidecar: string | null): string | null {
   if (sidecar === "mmproj") return "vision projector";
-  if (sidecar === "mtp") return "MTP draft sidecar";
   return null;
 }
 
@@ -266,12 +265,11 @@ export function ModelsPage() {
           Installed weights live in per-user app data and survive app updates. While a
           catalog download runs, that card&apos;s <strong>Download</strong> button shows{" "}
           <strong>Downloading…</strong> (with a percentage when known), then any
-          optional <strong>vision projector</strong> / <strong>MTP draft</strong>{" "}
-          sidecars, then <strong>Finishing install…</strong>; the progress card on this
-          page also tracks the stream and the rename-or-copy step into managed storage
-          (large models can take minutes, especially across volumes). Card size badges
-          show the main GGUF only—sidecars add extra download when the catalog lists
-          them.
+          optional <strong>vision projector</strong>, then{" "}
+          <strong>Finishing install…</strong>; the progress card on this page also
+          tracks the stream and the rename-or-copy step into managed storage (large
+          models can take minutes, especially across volumes). Card size badges show the
+          main GGUF only—sidecars add extra download when the catalog lists them.
         </p>
       </header>
 
@@ -509,9 +507,9 @@ export function ModelsPage() {
         </h3>
         <p className="mb-4 text-sm text-muted-foreground">
           Smallest downloads first. Approximate <strong>main GGUF</strong> size is on
-          each card (optional vision/MTP sidecars are extra when listed).{" "}
+          each card (an optional vision projector is extra when listed).{" "}
           <strong>Gemma 4 12B</strong> is highlighted as the recommended starting pick
-          for most writing and chat; prefer <strong>HY-MT1.5 7B</strong> for Translate
+          for most writing and chat; prefer <strong>Hy-MT2 7B</strong> for Translate
           DE↔EN.
         </p>
         <div className="grid gap-4 md:grid-cols-2">

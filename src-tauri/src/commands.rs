@@ -370,9 +370,9 @@ pub async fn download_model(
         return Err(e.to_string());
     }
 
-    // Optional vision projector + MTP draft (e.g. Gemma 4 12B).
+    // Optional mmproj when the catalog entry lists one. Draft GGUF sidecars are not
+    // downloaded; in-model MTP heads are used at decode, and files already on disk stay put.
     let mut mmproj_partial = None;
-    let mut mtp_partial = None;
     if let Some(url) = entry.mmproj_url.as_deref() {
         let app_c = app.clone();
         let id = entry.id.clone();
@@ -401,35 +401,7 @@ pub async fn download_model(
             Err(e) => tracing::warn!("mmproj download skipped: {e}"),
         }
     }
-    if let Some(url) = entry.mtp_draft_url.as_deref() {
-        let app_c = app.clone();
-        let id = entry.id.clone();
-        let staging = format!("{}.mtp.partial", entry.id);
-        match download::download_url_to_tmp(
-            &app,
-            url,
-            &staging,
-            entry.mtp_draft_sha256.as_deref(),
-            move |received, total| {
-                let _ = app_c.emit(
-                    "download-progress",
-                    serde_json::json!({
-                        "model_id": id,
-                        "phase": "downloading",
-                        "sidecar": "mtp",
-                        "received": received,
-                        "total": total,
-                    }),
-                );
-            },
-        )
-        .await
-        {
-            Ok(p) => mtp_partial = Some(p),
-            Err(e) => tracing::warn!("mtp draft download skipped: {e}"),
-        }
-    }
-    if mmproj_partial.is_some() || mtp_partial.is_some() {
+    if mmproj_partial.is_some() {
         let _ = app.emit(
             "download-progress",
             serde_json::json!({
@@ -439,10 +411,8 @@ pub async fn download_model(
                 "total": entry.size_bytes,
             }),
         );
-        if let Err(e) = storage::install_sidecars(&app, &entry.id, mmproj_partial, mtp_partial) {
+        if let Err(e) = storage::install_sidecars(&app, &entry.id, mmproj_partial) {
             tracing::warn!("sidecar install: {e}");
-        } else if let Ok(Some(p)) = storage::resolve_mtp_draft_path(&app, &entry.id) {
-            tracing::info!("MTP draft sidecar installed: {}", p.display());
         }
     }
 
@@ -595,6 +565,11 @@ fn inferred_generation_cap_from_user_turn(user_turn: &str) -> usize {
     cap.clamp(MIN, MAX)
 }
 
+/// Input-length estimate, never above the mode's stored `max_tokens`.
+fn generation_cap_for_mode(user_turn: &str, mode_max_tokens: u32) -> usize {
+    inferred_generation_cap_from_user_turn(user_turn).min(mode_max_tokens as usize)
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // Flat invoke args from the frontend; keep in sync with ModePage.
 pub async fn run_mode(
@@ -675,7 +650,7 @@ pub async fn run_mode(
         &terms,
         keep_fmt,
     );
-    let max_tokens = inferred_generation_cap_from_user_turn(&user);
+    let max_tokens = generation_cap_for_mode(&user, mode.max_tokens);
     let effective_system =
         guardrails::compose_effective_system(&mode.system_prompt, &state.persisted_snapshot());
     #[cfg(feature = "llama")]
@@ -813,14 +788,14 @@ pub async fn run_mode_chat(
             .find(|m| matches!(m.role, ChatInvokeRole::User))
             .map(|m| m.content.as_str())
             .unwrap_or("");
-        let max_tokens = inferred_generation_cap_from_user_turn(latest_user_turn);
+        let max_tokens = generation_cap_for_mode(latest_user_turn, mode.max_tokens);
         let sampler = inference::SamplerProfile::from_prompt_layout(PromptLayout::Chat);
 
         if let Some(image) = image_path.filter(|p| !p.trim().is_empty()) {
             let mmproj = storage::resolve_mmproj_path(&app, &effective_model)
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| {
-                    "This model has no vision projector (mmproj). Install Gemma 4 12B from the catalog to attach images."
+                    "This model has no vision projector (mmproj). Install a catalog model that includes mmproj to attach images."
                         .to_string()
                 })?;
             state.invalidate_chat_kv();
@@ -1037,6 +1012,14 @@ mod validate_tests {
         assert_eq!(super::inferred_generation_cap_from_user_turn("hello"), 386);
         let long = "word ".repeat(5000);
         assert_eq!(super::inferred_generation_cap_from_user_turn(&long), 8192);
+    }
+
+    #[test]
+    fn generation_cap_respects_mode_ceiling() {
+        assert_eq!(super::generation_cap_for_mode("hello", 384), 384);
+        assert_eq!(super::generation_cap_for_mode("hello", 2048), 386);
+        let long = "word ".repeat(5000);
+        assert_eq!(super::generation_cap_for_mode(&long, 1024), 1024);
     }
 
     #[test]

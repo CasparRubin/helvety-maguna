@@ -12,6 +12,9 @@ default = ["llama"]
 llama = ["dep:llama-cpp-4"]
 # Windows/Linux GPU: build with `--features llama-vulkan` when the Vulkan SDK is installed.
 llama-vulkan = ["llama", "llama-cpp-4/vulkan"]
+# NVIDIA CUDA: build with `--features llama-cuda` when the CUDA toolkit (`nvcc`) is installed.
+# Default Windows/Linux builds stay CPU-only so CI and machines without CUDA still compile.
+llama-cuda = ["llama", "llama-cpp-4/cuda"]
 
 [lib]
 # The `_lib` suffix may seem redundant but it is necessary
@@ -38,12 +41,12 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # `metal`: on macOS ggml links Apple Metal GPU acceleration (much faster prompt + decode than CPU-only).
 # On other targets the `metal` feature is ignored at build time; weights still run CPU-only unless you
-# enable Maguna's `llama-vulkan` feature on Windows/Linux builds that have a Vulkan SDK.
+# enable Maguna's `llama-vulkan` or `llama-cuda` feature on Windows/Linux (Vulkan SDK or NVIDIA CUDA toolkit).
 # `default-features = false` avoids `dynamic-link` (ggml `.dylib`s + broken `@rpath` in the .app).
 # `openmp` is omitted on macOS so release builds do not depend on Homebrew `libomp.dylib`.
-llama-cpp-4 = { version = "0.4.2", default-features = false, features = ["metal", "mtmd"], optional = true }
+llama-cpp-4 = { version = "0.7.0", default-features = false, features = ["metal", "mtmd"], optional = true }
 parking_lot = "0.12"
-tauri-plugin-dialog = "2"
+tauri-plugin-dialog = "2.7"
 
 [[example]]
 name = "spike_load"

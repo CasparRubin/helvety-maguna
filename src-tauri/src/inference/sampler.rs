@@ -53,18 +53,18 @@ impl SamplerProfile {
         }
     }
 
-    pub fn build(self) -> LlamaSampler {
+    pub fn build(self, n_vocab: i32) -> LlamaSampler {
         match self {
             Self::Greedy => LlamaSampler::chain_simple([LlamaSampler::greedy()]),
             Self::Chat => LlamaSampler::chain_simple([
-                LlamaSampler::penalties_simple(64, 1.05),
+                LlamaSampler::penalties_simple(n_vocab, 64, 1.05),
                 LlamaSampler::top_k(40),
                 LlamaSampler::top_p(0.9, 1),
                 LlamaSampler::temp(0.7),
                 LlamaSampler::dist(0),
             ]),
             Self::Translate => LlamaSampler::chain_simple([
-                LlamaSampler::penalties_simple(64, 1.05),
+                LlamaSampler::penalties_simple(n_vocab, 64, 1.05),
                 LlamaSampler::top_k(20),
                 LlamaSampler::top_p(0.6, 1),
                 LlamaSampler::temp(0.7),

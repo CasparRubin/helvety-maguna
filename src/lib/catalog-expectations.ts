@@ -1,17 +1,12 @@
 /**
- * Single source of truth for bundled catalog v9 test expectations.
+ * Single source of truth for bundled catalog v10 test expectations.
  * Keep in sync with `src-tauri/src/catalog.rs` and `src-tauri/resources/catalog.json`.
  */
-export const EXPECTED_V9_CATALOG_MODELS = [
+export const EXPECTED_V10_CATALOG_MODELS = [
   {
     id: "ministral-3-3b-instruct-q4km",
     chat_template: "mistral3_instruct",
     size_bytes: 2_146_498_528,
-  },
-  {
-    id: "phi-4-mini-instruct-q4km",
-    chat_template: "phi4_instruct",
-    size_bytes: 2_491_874_688,
   },
   {
     id: "qwen3.5-4b-q4km",
@@ -19,14 +14,14 @@ export const EXPECTED_V9_CATALOG_MODELS = [
     size_bytes: 3_013_027_808,
   },
   {
-    id: "hy-mt15-7b-q4km",
+    id: "hy-mt2-7b-q4km",
     chat_template: "hunyuan_dense",
-    size_bytes: 4_624_649_312,
+    size_bytes: 4_624_648_896,
   },
   {
-    id: "deepseek-r1-0528-qwen3-8b-q4km",
-    chat_template: "qwen2_instruct_reasoning",
-    size_bytes: 5_027_783_040,
+    id: "gemma-4-e4b-it-q4km",
+    chat_template: "gemma4_it",
+    size_bytes: 4_977_171_584,
   },
   {
     id: "ministral-3-8b-instruct-q4km",
@@ -54,14 +49,24 @@ export const EXPECTED_V9_CATALOG_MODELS = [
     size_bytes: 8_239_068_576,
   },
   {
+    id: "gpt-oss-20b-q4km",
+    chat_template: "gpt_oss",
+    size_bytes: 11_673_418_816,
+  },
+  {
+    id: "qwen3.8-27b-q4km",
+    chat_template: "qwen2_instruct",
+    size_bytes: 16_464_440_224,
+  },
+  {
+    id: "muse-glimmer-30b-q4km",
+    chat_template: "muse_glimmer",
+    size_bytes: 16_756_683_904,
+  },
+  {
     id: "gemma-4-26b-a4b-it-q4km",
     chat_template: "gemma4_it",
     size_bytes: 17_035_038_112,
-  },
-  {
-    id: "qwen3.6-27b-q4km",
-    chat_template: "qwen2_instruct",
-    size_bytes: 17_984_872_960,
   },
   {
     id: "glm-4.7-flash-q4km",
@@ -71,7 +76,7 @@ export const EXPECTED_V9_CATALOG_MODELS = [
 ] as const;
 
 /** Catalog ids in ascending `size_bytes` order (matches Rust `catalog_size_order_when_sorted`). */
-export const EXPECTED_V9_SIZE_ORDER = EXPECTED_V9_CATALOG_MODELS.map((m) => m.id);
+export const EXPECTED_V10_SIZE_ORDER = EXPECTED_V10_CATALOG_MODELS.map((m) => m.id);
 
 export const LEGACY_V4_CATALOG_IDS = [
   "qwen2.5-14b-instruct-q4km",
@@ -84,8 +89,16 @@ export const LEGACY_V5_CATALOG_IDS = ["qwen3-8b-q4km"] as const;
 
 export const LEGACY_V7_CATALOG_IDS = ["qwen3-14b-q4km"] as const;
 
-/** Retired when catalog moved to v9 (R1-0528 + HY-MT1.5 replacements). */
+/** Dropped in catalog v8. */
 export const LEGACY_V8_CATALOG_IDS = [
   "deepseek-r1-distill-qwen-7b-q4km",
   "hunyuan-mt-7b-q4km",
+] as const;
+
+/** Dropped in catalog v10. */
+export const LEGACY_V9_CATALOG_IDS = [
+  "phi-4-mini-instruct-q4km",
+  "hy-mt15-7b-q4km",
+  "qwen3.6-27b-q4km",
+  "deepseek-r1-0528-qwen3-8b-q4km",
 ] as const;

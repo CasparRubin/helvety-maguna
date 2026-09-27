@@ -1,11 +1,7 @@
-//! Optional multi-token prediction (MTP) speculative decode for models with MTP heads
-//! (e.g. Gemma 4). Uses an in-model [`LlamaContextType::Mtp`] draft context.
-//! Catalog `mtp-draft.gguf` sidecars are downloaded/stored for tooling and are **not**
-//! loaded by this path today.
+//! In-model MTP speculative decode ([`LlamaContextType::Mtp`]).
+//! Separate `mtp-draft.gguf` files, if an older install left one on disk, are not loaded.
 
-use std::num::NonZeroU32;
-
-use llama_cpp_4::context::params::{LlamaContextParams, LlamaContextType};
+use llama_cpp_4::context::params::LlamaContextType;
 use llama_cpp_4::context::LlamaContext;
 use llama_cpp_4::llama_backend::LlamaBackend;
 use llama_cpp_4::llama_batch::LlamaBatch;
@@ -19,37 +15,31 @@ use super::llama_impl::SESSION_N_CTX;
 
 const N_DRAFT_MAX: i32 = 3;
 
-/// When the loaded model exposes MTP heads, create a draft context + session.
-/// Returns `None` when the model does not support MTP (caller uses normal decode).
-///
-/// `target` is only borrowed for the duration of this call (`MtpSession` keeps a raw pointer).
-pub fn try_attach_mtp<'m>(
+/// Same-model MTP draft context, or `None` when the GGUF has no MTP heads.
+/// Keep this alive and pass `&mut` it into [`MtpSession::new_with_config`].
+pub fn try_create_mtp_draft<'m>(
     backend: &LlamaBackend,
     model: &'m LlamaModel,
-    target: &LlamaContext<'_>,
-) -> Option<(LlamaContext<'m>, MtpSession)> {
+) -> Option<LlamaContext<'m>> {
     let n_draft = N_DRAFT_MAX as u32;
-    let draft_params = LlamaContextParams::default()
-        .with_n_ctx(NonZeroU32::new(SESSION_N_CTX))
+    let draft_params = super::llama_impl::maguna_context_params(SESSION_N_CTX)
+        .ok()?
         .with_ctx_type(LlamaContextType::Mtp)
         .with_n_rs_seq(n_draft.max(4));
-    let draft = model.new_context(backend, draft_params).ok()?;
-    let config = MtpSessionConfig::new(1, N_DRAFT_MAX).with_p_min(0.0);
-    let session = MtpSession::new_with_config(target, &draft, config).ok()?;
-    tracing::info!("MTP speculative decode enabled (n_draft_max={N_DRAFT_MAX})");
-    Some((draft, session))
+    model.new_context(backend, draft_params).ok()
+}
+
+pub fn mtp_session_config() -> MtpSessionConfig {
+    MtpSessionConfig::new(1, N_DRAFT_MAX)
 }
 
 /// One speculative step: sample a verified token, then greedily accept matching drafts.
 /// Returns tokens that were accepted into the target KV (including the first sample).
-///
-/// The MTP draft [`LlamaContext`] must stay alive while `session` is used (held by the caller).
 #[allow(clippy::too_many_arguments)]
 pub fn mtp_step(
     app: &tauri::AppHandle,
     model: &LlamaModel,
-    target: &mut LlamaContext<'_>,
-    session: &mut MtpSession,
+    session: &mut MtpSession<'_, '_>,
     sampler: &mut LlamaSampler,
     batch: &mut LlamaBatch,
     mut pos: i32,
@@ -59,7 +49,7 @@ pub fn mtp_step(
     use std::sync::atomic::Ordering;
 
     let mut out = Vec::new();
-    let first = sampler.sample(target, logit_idx);
+    let first = sampler.sample(session.target_context(), logit_idx);
     sampler.accept(first);
     if model.is_eog_token(first) {
         return Ok((out, pos));
@@ -69,10 +59,9 @@ pub fn mtp_step(
     batch
         .add(first, pos, &[0], true)
         .map_err(|e| format!("mtp batch: {e}"))?;
-    target
-        .decode(batch)
+    session
+        .decode_target_and_process(batch)
         .map_err(|e| format!("mtp decode: {e}"))?;
-    let _ = session.process(batch);
     out.push(first);
     pos += 1;
 
@@ -82,8 +71,7 @@ pub fn mtp_step(
         if cancel.load(Ordering::SeqCst) {
             break;
         }
-        // Verify: target must greedily agree with the draft token.
-        let verified = sampler.sample(target, 0);
+        let verified = sampler.sample(session.target_context(), 0);
         if verified.0 != draft_tok.0 {
             break;
         }
@@ -97,10 +85,9 @@ pub fn mtp_step(
         batch
             .add(verified, pos, &[0], true)
             .map_err(|e| format!("mtp draft batch: {e}"))?;
-        target
-            .decode(batch)
+        session
+            .decode_target_and_process(batch)
             .map_err(|e| format!("mtp draft decode: {e}"))?;
-        let _ = session.process(batch);
         out.push(verified);
         pos += 1;
         accepted = accepted.saturating_add(1);
@@ -109,7 +96,11 @@ pub fn mtp_step(
     Ok((out, pos))
 }
 
-fn emit_token(app: &tauri::AppHandle, model: &LlamaModel, token: LlamaToken) -> Result<(), String> {
+pub(super) fn emit_token(
+    app: &tauri::AppHandle,
+    model: &LlamaModel,
+    token: LlamaToken,
+) -> Result<(), String> {
     let bytes = model
         .token_to_bytes(token, Special::Plaintext)
         .map_err(|e| format!("token to bytes: {e}"))?;

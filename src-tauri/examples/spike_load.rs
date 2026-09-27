@@ -1,7 +1,7 @@
 //! Spike-load a GGUF and emit a short greedy completion (engine smoke test).
 //!
 //! ```bash
-//! # Raw text is only a rough smoke test. Instruct families (Qwen, Gemma, GLM, Phi-4, …)
+//! # Raw text is only a rough smoke test. Instruct families (Qwen, Gemma, GLM, gpt-oss, …)
 //! # need a formatted prompt — see `src/chat_template.rs` and unit tests there.
 //! cargo run --example spike_load --features llama -- /path/to/model.gguf "Say hi in one word."
 //! ```
@@ -9,11 +9,12 @@ use std::env;
 use std::num::NonZeroU32;
 use std::path::Path;
 
-use llama_cpp_4::context::params::LlamaContextParams;
+use llama_cpp_4::context::params::{LlamaContextParams, LlamaFlashAttnType};
 use llama_cpp_4::llama_backend::LlamaBackend;
 use llama_cpp_4::llama_batch::LlamaBatch;
 use llama_cpp_4::model::params::LlamaModelParams;
 use llama_cpp_4::model::{AddBos, LlamaModel, Special};
+use llama_cpp_4::quantize::GgmlType;
 use llama_cpp_4::sampling::LlamaSampler;
 
 fn main() -> Result<(), String> {
@@ -26,13 +27,21 @@ fn main() -> Result<(), String> {
     }
 
     let backend = LlamaBackend::init().map_err(|e| format!("backend init: {e}"))?;
-    let model = LlamaModel::load_from_file(&backend, &path, &LlamaModelParams::default())
-        .map_err(|e| format!("load model: {e}"))?;
+    let model = LlamaModel::load_from_file(
+        &backend,
+        &path,
+        &LlamaModelParams::default().with_load_mtp(true),
+    )
+    .map_err(|e| format!("load model: {e}"))?;
     eprintln!("loaded {path}");
 
-    let ctx_params = LlamaContextParams::default().with_n_ctx(Some(
-        NonZeroU32::new(512).ok_or_else(|| "invalid n_ctx".to_string())?,
-    ));
+    let ctx_params = LlamaContextParams::default()
+        .with_n_ctx(Some(
+            NonZeroU32::new(512).ok_or_else(|| "invalid n_ctx".to_string())?,
+        ))
+        .with_flash_attn_type(LlamaFlashAttnType::Auto)
+        .with_cache_type_k(GgmlType::Q8_0)
+        .with_cache_type_v(GgmlType::Q8_0);
     let mut ctx = model
         .new_context(&backend, ctx_params)
         .map_err(|e| format!("create context: {e}"))?;

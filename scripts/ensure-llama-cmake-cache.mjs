@@ -5,7 +5,8 @@
  * because ggml uses C++17 std::filesystem. Remove stale entries so cmake
  * reconfigures with CMAKE_OSX_DEPLOYMENT_TARGET from .cargo/config.toml.
  */
-import { readdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,6 +38,95 @@ function isStale(deploy, cxxFlags) {
   return false;
 }
 
+const TUNING_STUB = `# Maguna stub: llama-cpp-sys-4 0.7.0's published llama.cpp tree omits tools/tuning,
+# but tools/CMakeLists.txt adds it when GGML_METAL is ON.
+# Maguna does not build the Metal kernel tuner.
+`;
+
+/** Metal configure fails when tools/CMakeLists.txt lists tuning and the directory is absent. */
+async function stubTuningUnderTools(tools) {
+  const cmake = path.join(tools, "CMakeLists.txt");
+  const tuning = path.join(tools, "tuning");
+  let text;
+  try {
+    text = await readFile(cmake, "utf8");
+  } catch {
+    return false;
+  }
+  if (!text.includes("add_subdirectory(tuning)")) return false;
+  try {
+    await stat(tuning);
+    return false;
+  } catch {
+    // Directory is absent; write the stub below.
+  }
+  await mkdir(tuning, { recursive: true });
+  await writeFile(path.join(tuning, "CMakeLists.txt"), TUNING_STUB);
+  console.warn(`Added tools/tuning stub under ${tools}`);
+  return true;
+}
+
+/**
+ * The sys crate copies llama.cpp once and then skips recopies when its version
+ * sentinel matches, so a stub has to land in both the registry tree and any
+ * already-copied OUT_DIR tree.
+ */
+async function stubMissingMetalTuningDir() {
+  const cargoHome = process.env.CARGO_HOME ?? path.join(homedir(), ".cargo");
+  const srcRoot = path.join(cargoHome, "registry", "src");
+  let indexes;
+  try {
+    indexes = await readdir(srcRoot, { withFileTypes: true });
+  } catch {
+    indexes = [];
+  }
+  for (const index of indexes) {
+    if (!index.isDirectory()) continue;
+    const indexDir = path.join(srcRoot, index.name);
+    let crates;
+    try {
+      crates = await readdir(indexDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const crate of crates) {
+      if (!crate.isDirectory() || !crate.name.startsWith("llama-cpp-sys-4-")) {
+        continue;
+      }
+      await stubTuningUnderTools(path.join(indexDir, crate.name, "llama.cpp", "tools"));
+    }
+  }
+
+  const targetRoot = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../src-tauri/target",
+  );
+  let profiles;
+  try {
+    profiles = await readdir(targetRoot, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const profile of profiles) {
+    if (!profile.isDirectory()) continue;
+    const buildDir = path.join(targetRoot, profile.name, "build");
+    let builds;
+    try {
+      builds = await readdir(buildDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const build of builds) {
+      if (!build.isDirectory() || !build.name.startsWith("llama-cpp-sys-4-")) {
+        continue;
+      }
+      await stubTuningUnderTools(
+        path.join(buildDir, build.name, "out", "llama.cpp", "tools"),
+      );
+    }
+  }
+}
+
 async function purgeReleaseLlamaBuildArtifacts() {
   if (process.platform !== "darwin") return;
   let entries;
@@ -55,6 +145,8 @@ async function purgeReleaseLlamaBuildArtifacts() {
     }
   }
 }
+
+await stubMissingMetalTuningDir();
 
 try {
   await stat(root);

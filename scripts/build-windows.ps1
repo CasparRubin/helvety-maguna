@@ -29,4 +29,11 @@ $env:PATH = "$bin;$env:PATH"
 Write-Host "LIBCLANG_PATH=$($env:LIBCLANG_PATH)" -ForegroundColor Green
 if ($env:NM_PATH) { Write-Host "NM_PATH=$($env:NM_PATH)" -ForegroundColor Green }
 node scripts/ensure-llama-cmake-cache.mjs
-bunx tauri build
+$tauriArgs = @("tauri", "build")
+if (Get-Command nvcc -ErrorAction SilentlyContinue) {
+    Write-Host "nvcc found; enabling Maguna llama-cuda feature" -ForegroundColor Green
+    $tauriArgs += @("--", "--features", "llama-cuda")
+} else {
+    Write-Host "nvcc not on PATH; Windows build stays CPU-only (install CUDA toolkit for llama-cuda)." -ForegroundColor DarkGray
+}
+bunx @tauriArgs

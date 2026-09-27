@@ -12,7 +12,7 @@ mod multimodal;
 mod sampler;
 
 #[cfg(feature = "llama")]
-pub use llama_impl::{stream_chat_completion, ChatKvSession};
+pub use llama_impl::{maguna_model_params, stream_chat_completion, ChatKvSession};
 #[cfg(feature = "llama")]
 pub use multimodal::stream_completion_with_image;
 #[cfg(feature = "llama")]

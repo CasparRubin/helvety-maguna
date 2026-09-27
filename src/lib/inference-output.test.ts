@@ -48,6 +48,11 @@ describe("stripChatArtifacts", () => {
       ["Hi<|end|>", "Hi"],
       ["Hi</s>", "Hi"],
       ["Hi<s>more", "Hi"],
+      // Harmony / Muse Glimmer
+      ["ok<|start|>assistant", "ok"],
+      ["ok<|message|>more", "ok"],
+      ["ok<|eot|>", "ok"],
+      ["ok<|eom|>", "ok"],
       // Mistral Instruct
       ["done[INST]more", "done"],
       ["done[/INST]", "done"],
@@ -237,9 +242,8 @@ describe("visibleInferenceOutput", () => {
 });
 
 describe("modelPreservesReasoningTrace", () => {
-  it("returns true for current and legacy DeepSeek R1 catalog ids", () => {
+  it("returns true for DeepSeek R1 ids (imports and previously installed catalog GGUFs)", () => {
     expect(modelPreservesReasoningTrace("deepseek-r1-0528-qwen3-8b-q4km")).toBe(true);
-    // Retired from catalog v9 but still recognized for already-installed GGUFs.
     expect(modelPreservesReasoningTrace("deepseek-r1-distill-qwen-7b-q4km")).toBe(true);
     expect(modelPreservesReasoningTrace("custom_deepseek_r1_import")).toBe(true);
   });
@@ -255,9 +259,10 @@ describe("modelPreservesReasoningTrace", () => {
     expect(modelPreservesReasoningTrace("gemma-4-26b-a4b-it-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace("glm-4-9b-0414-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace("glm-4.7-flash-q4km")).toBe(false);
-    expect(modelPreservesReasoningTrace("hy-mt15-7b-q4km")).toBe(false);
+    expect(modelPreservesReasoningTrace("hy-mt2-7b-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace("ministral-3-8b-instruct-q4km")).toBe(false);
-    expect(modelPreservesReasoningTrace("phi-4-mini-instruct-q4km")).toBe(false);
+    expect(modelPreservesReasoningTrace("gpt-oss-20b-q4km")).toBe(false);
+    expect(modelPreservesReasoningTrace("muse-glimmer-30b-q4km")).toBe(false);
     expect(modelPreservesReasoningTrace(null)).toBe(false);
     expect(modelPreservesReasoningTrace(undefined)).toBe(false);
     expect(modelPreservesReasoningTrace("")).toBe(false);
