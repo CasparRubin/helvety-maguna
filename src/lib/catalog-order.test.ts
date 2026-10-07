@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { CatalogEntry } from "@/lib/types";
-import { EXPECTED_V10_SIZE_ORDER } from "@/lib/catalog-expectations";
+import { EXPECTED_V11_SIZE_ORDER } from "@/lib/catalog-expectations";
 import {
   formatApproxDownloadGb,
   formatCatalogReleaseDate,
@@ -57,9 +57,9 @@ describe("sortCatalogBySizeAscending", () => {
     ]);
   });
 
-  it("orders full shipped catalog v10 by download size ascending", () => {
+  it("orders full shipped catalog v11 by download size ascending", () => {
     const sorted = sortCatalogBySizeAscending(SHIPPED_CATALOG.models);
-    expect(sorted.map((e) => e.id)).toEqual([...EXPECTED_V10_SIZE_ORDER]);
+    expect(sorted.map((e) => e.id)).toEqual([...EXPECTED_V11_SIZE_ORDER]);
   });
 });
 

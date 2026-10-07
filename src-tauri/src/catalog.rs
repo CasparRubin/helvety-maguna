@@ -25,7 +25,8 @@ pub struct CatalogModel {
     /// Chat framing key (`chat_template`): `tinyllama_v1`, `llama3_instruct`, `mistral_instruct`,
     /// `qwen2_instruct`, `qwen2_instruct_reasoning`, `gemma2_it`, `gemma4_it`, `mistral3_instruct`,
     /// `moonshot_instruct` (`kimi_k2`/`kimi` aliases), `phi4_instruct`, `hunyuan_dense`,
-    /// `glm4_instruct`, `glm47_flash`, `glm4_z1`, `gpt_oss`, `muse_glimmer`, etc.—must match the instruct GGUF layout.
+    /// `glm4_instruct`, `glm47_flash`, `glm4_z1`, `gpt_oss`, `muse_glimmer`, `eurollm_instruct`,
+    /// etc.—must match the instruct GGUF layout.
     #[serde(default = "default_chat_template")]
     pub chat_template: String,
     /// Public release of this checkpoint family (`YYYY-MM-DD`), from upstream cards; optional.
@@ -93,7 +94,7 @@ mod tests {
     ];
 
     /// Keep in sync with `src/lib/catalog-expectations.ts`.
-    const EXPECTED_V10_MODELS: &[(&str, &str, u64)] = &[
+    const EXPECTED_V11_MODELS: &[(&str, &str, u64)] = &[
         (
             "ministral-3-3b-instruct-q4km",
             "mistral3_instruct",
@@ -106,6 +107,11 @@ mod tests {
             "ministral-3-8b-instruct-q4km",
             "mistral3_instruct",
             5_198_387_456,
+        ),
+        (
+            "eurollm-9b-instruct-2512-q4km",
+            "eurollm_instruct",
+            5_582_838_912,
         ),
         ("glm-4-9b-0414-q4km", "glm4_instruct", 6_166_574_464),
         ("qwen3.5-9b-q4km", "qwen2_instruct", 6_169_341_984),
@@ -123,10 +129,10 @@ mod tests {
     ];
 
     #[test]
-    fn bundled_catalog_is_version_10_with_fourteen_models() {
+    fn bundled_catalog_is_version_11_with_fifteen_models() {
         let cat = load_catalog().expect("embedded catalog.json");
-        assert_eq!(cat.version, 10);
-        assert_eq!(cat.models.len(), 14);
+        assert_eq!(cat.version, 11);
+        assert_eq!(cat.models.len(), 15);
     }
 
     #[test]
@@ -154,8 +160,8 @@ mod tests {
     }
 
     #[test]
-    fn catalog_v10_ids_and_templates() {
-        for &(id, template, size_bytes) in EXPECTED_V10_MODELS {
+    fn catalog_v11_ids_and_templates() {
+        for &(id, template, size_bytes) in EXPECTED_V11_MODELS {
             let model = find_catalog_model(id).unwrap_or_else(|_| panic!("{id}"));
             assert_eq!(model.chat_template, template, "{id}");
             assert_eq!(model.size_bytes, size_bytes, "{id}");
@@ -206,7 +212,7 @@ mod tests {
         let mut models = load_catalog().expect("catalog").models;
         models.sort_by_key(|m| m.size_bytes);
         let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
-        let expected: Vec<&str> = EXPECTED_V10_MODELS.iter().map(|(id, _, _)| *id).collect();
+        let expected: Vec<&str> = EXPECTED_V11_MODELS.iter().map(|(id, _, _)| *id).collect();
         assert_eq!(ids, expected);
     }
 }

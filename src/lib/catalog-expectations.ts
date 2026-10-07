@@ -1,8 +1,8 @@
 /**
- * Single source of truth for bundled catalog v10 test expectations.
+ * Single source of truth for bundled catalog v11 test expectations.
  * Keep in sync with `src-tauri/src/catalog.rs` and `src-tauri/resources/catalog.json`.
  */
-export const EXPECTED_V10_CATALOG_MODELS = [
+export const EXPECTED_V11_CATALOG_MODELS = [
   {
     id: "ministral-3-3b-instruct-q4km",
     chat_template: "mistral3_instruct",
@@ -27,6 +27,11 @@ export const EXPECTED_V10_CATALOG_MODELS = [
     id: "ministral-3-8b-instruct-q4km",
     chat_template: "mistral3_instruct",
     size_bytes: 5_198_387_456,
+  },
+  {
+    id: "eurollm-9b-instruct-2512-q4km",
+    chat_template: "eurollm_instruct",
+    size_bytes: 5_582_838_912,
   },
   {
     id: "glm-4-9b-0414-q4km",
@@ -76,7 +81,7 @@ export const EXPECTED_V10_CATALOG_MODELS = [
 ] as const;
 
 /** Catalog ids in ascending `size_bytes` order (matches Rust `catalog_size_order_when_sorted`). */
-export const EXPECTED_V10_SIZE_ORDER = EXPECTED_V10_CATALOG_MODELS.map((m) => m.id);
+export const EXPECTED_V11_SIZE_ORDER = EXPECTED_V11_CATALOG_MODELS.map((m) => m.id);
 
 export const LEGACY_V4_CATALOG_IDS = [
   "qwen2.5-14b-instruct-q4km",

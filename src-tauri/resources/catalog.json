@@ -1,5 +1,5 @@
 {
-  "version": 10,
+  "version": 11,
   "models": [
     {
       "id": "ministral-3-3b-instruct-q4km",
@@ -73,6 +73,20 @@
       "hf_repo": "bartowski/mistralai_Ministral-3-8B-Instruct-2512-GGUF",
       "chat_template": "mistral3_instruct",
       "release_date": "2025-12-01"
+    },
+    {
+      "id": "eurollm-9b-instruct-2512-q4km",
+      "maker": "Unbabel",
+      "display_name": "EuroLLM 9B",
+      "description": "EU consortium instruct (January 2026 refresh) for English, German, and other European languages at ~5.6 GB. A general writer for correction and drafting—keep Hy-MT2 7B for Translate DE↔EN. Maguna uses plain ChatML and does not inject Qwen think tags.",
+      "url": "https://huggingface.co/mradermacher/EuroLLM-9B-Instruct-2512-GGUF/resolve/main/EuroLLM-9B-Instruct-2512.Q4_K_M.gguf",
+      "sha256": "fe9b50d4ba67eb0131f1ceeaab2e56ea8fb6b2bbc37391d3219c791c3b140a28",
+      "size_bytes": 5582838912,
+      "languages": ["en", "de", "fr", "es", "it", "pt", "nl", "pl"],
+      "license_note": "Apache-2.0 — see the EuroLLM model card on Hugging Face.",
+      "hf_repo": "mradermacher/EuroLLM-9B-Instruct-2512-GGUF",
+      "chat_template": "eurollm_instruct",
+      "release_date": "2026-01-26"
     },
     {
       "id": "glm-4-9b-0414-q4km",

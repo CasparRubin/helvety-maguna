@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  EXPECTED_V10_CATALOG_MODELS,
-  EXPECTED_V10_SIZE_ORDER,
+  EXPECTED_V11_CATALOG_MODELS,
+  EXPECTED_V11_SIZE_ORDER,
   LEGACY_V4_CATALOG_IDS,
   LEGACY_V5_CATALOG_IDS,
   LEGACY_V7_CATALOG_IDS,
@@ -13,21 +13,21 @@ import { RECOMMENDED_CATALOG_MODEL_ID } from "@/lib/catalog-order";
 import { SHIPPED_CATALOG } from "@/lib/shipped-catalog";
 
 describe("SHIPPED_CATALOG", () => {
-  it("is catalog schema version 10 with fourteen models", () => {
-    expect(SHIPPED_CATALOG.version).toBe(10);
-    expect(SHIPPED_CATALOG.models).toHaveLength(14);
+  it("is catalog schema version 11 with fifteen models", () => {
+    expect(SHIPPED_CATALOG.version).toBe(11);
+    expect(SHIPPED_CATALOG.models).toHaveLength(15);
   });
 
-  it("lists every v10 catalog id with the expected chat template and size", () => {
+  it("lists every v11 catalog id with the expected chat template and size", () => {
     const byId = new Map(SHIPPED_CATALOG.models.map((m) => [m.id, m]));
-    for (const expected of EXPECTED_V10_CATALOG_MODELS) {
+    for (const expected of EXPECTED_V11_CATALOG_MODELS) {
       const model = byId.get(expected.id);
       expect(model, `missing catalog model ${expected.id}`).toBeDefined();
       expect(model!.chat_template).toBe(expected.chat_template);
       expect(model!.size_bytes).toBe(expected.size_bytes);
     }
     expect([...byId.keys()].sort()).toEqual(
-      EXPECTED_V10_CATALOG_MODELS.map((m) => m.id).sort(),
+      EXPECTED_V11_CATALOG_MODELS.map((m) => m.id).sort(),
     );
   });
 
@@ -35,7 +35,7 @@ describe("SHIPPED_CATALOG", () => {
     const sorted = [...SHIPPED_CATALOG.models].sort(
       (a, b) => a.size_bytes - b.size_bytes,
     );
-    expect(sorted.map((m) => m.id)).toEqual([...EXPECTED_V10_SIZE_ORDER]);
+    expect(sorted.map((m) => m.id)).toEqual([...EXPECTED_V11_SIZE_ORDER]);
   });
 
   it("includes required metadata on every catalog entry", () => {

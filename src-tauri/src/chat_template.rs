@@ -16,6 +16,7 @@
 //! OpenAI gpt-oss uses Harmony (`<|start|>` / `<|channel|>analysis` / `<|channel|>final`).
 //! Meta Muse Glimmer uses ATEM (`<|start|>role<|message|>` / `<|eot|>`) with a Reasoning strength line.
 //! Z.ai GLM-4 9B uses `[gMASK]<sop>` plus `<|system|>` / `<|user|>` / `<|assistant|>`.
+//! EuroLLM instruct uses plain ChatML (`im_start` / `im_end`) with no Qwen think block.
 //! GLM-4.7 Flash appends `/nothink` on user turns when Thinking is off; Settings can omit it.
 //! GLM-Z1 opens a think block at generation time for reasoning imports.
 //!
@@ -28,6 +29,9 @@
 /// family, returns the manifest/catalog key (`mistral_instruct`, `qwen2_instruct`, …).
 pub fn try_catalog_template_key_from_hint(hint: &str) -> Option<&'static str> {
     let lower = hint.to_ascii_lowercase();
+    if lower.contains("eurollm") || lower.contains("euro-llm") || lower.contains("euro_llm") {
+        return Some("eurollm_instruct");
+    }
     if lower.contains("ministral") {
         return Some("mistral3_instruct");
     }
@@ -150,6 +154,8 @@ pub enum ChatTemplate {
     GptOssHarmony,
     /// Meta Muse Glimmer ATEM (`<|start|>role<|message|>` / `<|eot|>`; reasoning strength in system).
     MuseGlimmer,
+    /// EuroLLM instruct: plain ChatML with no Qwen think block (Thinking toggle is ignored).
+    EuroLlmInstruct,
 }
 
 #[cfg(feature = "llama")]
@@ -331,6 +337,34 @@ fn gemma4_assistant_history(text: &str, enable_thinking: bool) -> String {
 }
 
 #[cfg(feature = "llama")]
+fn format_plain_chatml_prompt(system: &str, user: &str) -> String {
+    const IM_START: &str = concat!("<|", "im_start", "|>");
+    const IM_END: &str = concat!("<|", "im_end", "|>");
+    format!(
+        "{IM_START}system\n{system}{IM_END}\n{IM_START}user\n{user}{IM_END}\n{IM_START}assistant\n"
+    )
+}
+
+#[cfg(feature = "llama")]
+fn format_plain_chatml_chat(system: &str, pieces: &[(ChatPieceRole, &str)]) -> String {
+    const IM_START: &str = concat!("<|", "im_start", "|>");
+    const IM_END: &str = concat!("<|", "im_end", "|>");
+    let mut s = format!("{IM_START}system\n{system}{IM_END}\n");
+    for &(role, text) in pieces {
+        match role {
+            ChatPieceRole::User => {
+                s.push_str(&format!("{IM_START}user\n{text}{IM_END}\n"));
+            }
+            ChatPieceRole::Assistant => {
+                s.push_str(&format!("{IM_START}assistant\n{text}{IM_END}\n"));
+            }
+        }
+    }
+    s.push_str(&format!("{IM_START}assistant\n"));
+    s
+}
+
+#[cfg(feature = "llama")]
 fn format_qwen_chatml_prompt(system: &str, user: &str, disable_thinking: bool) -> String {
     const IM_START: &str = concat!("<|", "im_start", "|>");
     const IM_END: &str = concat!("<|", "im_end", "|>");
@@ -391,6 +425,7 @@ impl ChatTemplate {
             "glm4_z1" | "glm_z1" => Self::Glm4Z1Reasoning,
             "gpt_oss" | "gpt-oss" | "harmony" => Self::GptOssHarmony,
             "muse_glimmer" | "muse-glimmer" | "glimmer" => Self::MuseGlimmer,
+            "eurollm_instruct" | "eurollm" => Self::EuroLlmInstruct,
             _ => Self::TinyLlamaV1,
         }
     }
@@ -418,7 +453,8 @@ impl ChatTemplate {
             | Self::KimiMoonshot
             | Self::Phi4Instruct
             | Self::HunyuanDense
-            | Self::Glm4Instruct => false,
+            | Self::Glm4Instruct
+            | Self::EuroLlmInstruct => false,
         }
     }
 
@@ -493,6 +529,7 @@ impl ChatTemplate {
                 glimmer_user_block(user),
                 glimmer_assistant_gen_prefix()
             ),
+            Self::EuroLlmInstruct => format_plain_chatml_prompt(system, user),
         }
     }
 
@@ -738,6 +775,7 @@ impl ChatTemplate {
                 s.push_str(&glimmer_assistant_gen_prefix());
                 s
             }
+            Self::EuroLlmInstruct => format_plain_chatml_chat(system, pieces),
         }
     }
 }
@@ -1172,6 +1210,49 @@ mod llama_chat_template_tests {
         let p = ChatTemplate::HunyuanDense.format_prompt("SYS", "hello", false);
         assert_eq!(p, "<|startoftext|>SYS<|extra_4|>hello<|extra_0|>");
     }
+
+    #[test]
+    fn eurollm_plain_chatml_omits_think_tags() {
+        assert_eq!(
+            ChatTemplate::from_catalog_str("eurollm_instruct"),
+            ChatTemplate::EuroLlmInstruct
+        );
+        assert!(!ChatTemplate::EuroLlmInstruct.resolve_enable_thinking(true));
+        let off = ChatTemplate::EuroLlmInstruct.format_prompt("SYS", "hello", false);
+        let on = ChatTemplate::EuroLlmInstruct.format_prompt("SYS", "hello", true);
+        const IM_START: &str = concat!("<|", "im_start", "|>");
+        const IM_END: &str = concat!("<|", "im_end", "|>");
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        let expected = format!(
+            "{IM_START}system\nSYS{IM_END}\n{IM_START}user\nhello{IM_END}\n{IM_START}assistant\n"
+        );
+        assert_eq!(off, expected);
+        assert_eq!(on, expected);
+        assert!(!off.contains(THINK_OPEN), "{off}");
+    }
+
+    #[test]
+    fn eurollm_chat_history_stays_plain_chatml() {
+        let pieces = [
+            (ChatPieceRole::User, "first"),
+            (ChatPieceRole::Assistant, "reply"),
+            (ChatPieceRole::User, "second"),
+        ];
+        let p = ChatTemplate::EuroLlmInstruct.format_prompt_chat("SYS", &pieces, true);
+        const IM_START: &str = concat!("<|", "im_start", "|>");
+        const IM_END: &str = concat!("<|", "im_end", "|>");
+        const THINK_OPEN: &str = concat!("<", "think", ">");
+        assert!(
+            p.contains(&format!("{IM_START}assistant\nreply{IM_END}\n")),
+            "{p}"
+        );
+        assert!(
+            p.contains(&format!("{IM_START}user\nsecond{IM_END}\n")),
+            "{p}"
+        );
+        assert!(p.ends_with(&format!("{IM_START}assistant\n")), "{p}");
+        assert!(!p.contains(THINK_OPEN), "{p}");
+    }
 }
 
 #[cfg(test)]
@@ -1243,6 +1324,10 @@ mod tests {
         assert_eq!(
             manifest_template_key_from_hints(["GLM-Z1-9B-0414-Q4_K_M"]),
             "glm4_z1".to_string()
+        );
+        assert_eq!(
+            manifest_template_key_from_hints(["EuroLLM-9B-Instruct-2512.Q4_K_M"]),
+            "eurollm_instruct".to_string()
         );
         assert!(manifest_template_key_from_hints(["zzz", "\n"]).is_empty());
     }
